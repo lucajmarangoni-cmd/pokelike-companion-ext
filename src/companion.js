@@ -591,7 +591,7 @@
     root.className = open ? 'pkc-open' : 'pkc-closed';
     root.innerHTML = `
       <div class="pkc-head">
-        <span class="pkc-ball" aria-hidden="true"></span>
+        <span class="pkc-ball" aria-hidden="true"><img src="img/sprites/items/ultra-ball.png" alt="" onerror="this.remove()"></span>
         <span class="pkc-title">COMPANION</span>
         ${hunt.running ? '<span class="pkc-live">CAÇANDO</span>' : ''}
         <button class="pkc-x" data-act="toggle" title="Abrir/fechar">${open ? '–' : '+'}</button>

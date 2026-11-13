@@ -49,6 +49,13 @@
   cursor: move;
 }
 #pkc-root.pkc-closed .pkc-head { border-bottom: 0; border-radius: 2px; }
+/* Ultra Ball: usa o sprite do próprio jogo; se não carregar, sobra a bola desenhada em CSS. */
+#pkc-root .pkc-ball img {
+  position: absolute; z-index: 1; left: 50%; top: 50%; width: 36px; height: 36px;
+  transform: translate(-50%, -50%); image-rendering: pixelated; pointer-events: none;
+}
+#pkc-root .pkc-ball:has(img) { border-color: transparent; background: none; }
+#pkc-root .pkc-ball:has(img)::before, #pkc-root .pkc-ball:has(img)::after { display: none; }
 #pkc-root .pkc-ball {
   position: relative; flex: none; width: 16px; height: 16px; border-radius: 50%;
   background: linear-gradient(#fff 0 44%, var(--pkc-ink) 44% 56%, #fff 56%);

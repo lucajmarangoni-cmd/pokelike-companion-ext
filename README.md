@@ -51,3 +51,10 @@ Para atualizar depois: substitua os arquivos e clique em ↻ no card da extensã
 O Pokelike atualiza com frequência. A extensão usa funções internas do jogo
 (`runBattle`, `executeResetRun`, `campaignGymTeam`...). Se alguma for renomeada,
 o console mostra `[Pokelike Companion] jogo não carregou as funções esperadas`.
+
+## Ícones
+
+O ícone da extensão (`icons/`) é uma Ultra Ball em pixel art própria, gerada por
+`tools/make_icons.py`: edite a grade 16×16 do script e rode `python3 tools/make_icons.py`
+(precisa do Pillow). A Ultra Ball do cabeçalho do painel é carregada do próprio site
+do jogo enquanto você joga, e não fica guardada aqui.
