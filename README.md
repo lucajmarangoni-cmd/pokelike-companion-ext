@@ -23,6 +23,7 @@ Para atualizar depois: substitua os arquivos e clique em ↻ no card da extensã
 | **Luta** | Próximo chefe (líder de ginásio no Story, treinador no Battle Tower), **chance de vitória** calculada com 300 lutas simuladas pelo próprio motor do jogo, **melhor ordem do time** (testa todas as ordens) e duelo de tipos. |
 | **Time** | Seu time com HP e o golpe que cada um usa, as fraquezas que o time compartilha, os buracos de cobertura de ataque e os traits (no Battle Tower). |
 | **Tipos** | Tabela de tipos: escolha 1 ou 2 tipos e veja o que bate 2x/4x, o que resiste e quanto cada Pokémon do seu time causa. |
+| **Notas S+ a C** | Nas telas de **relíquia**, **item** e **boost de atributo**, cada opção ganha uma nota (S+, S, A, B ou C) com os motivos: em quem equipar, com quem combina, quanto melhora a luta contra o próximo chefe. Ex.: *Mystic Water — S+, equipar em Gyarados: +40% no dano Água, ele vai na frente e é quem mais luta.* |
 | **Tela de captura** | Embaixo de cada opção: shiny/aurora, tipo de ataque, cobertura nova, se cobre ou piora fraquezas do time, traits que sobem e quanto muda a chance contra o próximo chefe. |
 
 ## Coisas do jogo que vale saber
@@ -35,6 +36,28 @@ Para atualizar depois: substitua os arquivos e clique em ↻ no card da extensã
   Um Pidgey (Normal/Flying), por exemplo, só bate Flying.
 - **Traits** (Battle Tower): cada Pokémon dá 1 ponto por tipo (shiny conta 2,
   aurora 3) e cada 2 pontos sobem 1 tier.
+
+## Como as notas são calculadas
+
+A nota soma duas coisas:
+
+1. **Simulação**: o motor de batalha do próprio jogo roda a luta contra o próximo chefe com e
+   sem a opção (as mesmas sementes de batalha pra todas as opções, então a diferença vem da
+   opção e não da sorte). Se a luta for fácil ou difícil demais pra comparar, a simulação
+   aumenta a vida de um dos lados até a chance ficar perto de 50%.
+2. **Sinergia**: regras com o motivo escrito. Item de tipo só serve pra quem é daquele tipo
+   (e quem segura passa a atacar com ele, +40% de dano); relíquia de kit conta os Pokémon e
+   traits do tipo; boost de SPE vê se você passa a atacar antes de alguém do chefe; e assim por diante.
+
+Faixas: **S+** ≥ 14 · **S** ≥ 9 · **A** ≥ 5 · **B** ≥ 1,5 · **C** abaixo. "★ MELHOR" só
+aparece quando uma opção ganha com folga. Dá pra desligar na aba **Luta → Dicas na tela do jogo**.
+
+## Desempenho
+
+As simulações rodam em fatias curtas, devolvendo o controle pro navegador entre elas: clicar
+num card nunca fica esperando o cálculo, e sair da tela cancela o que estava sendo calculado.
+O espaço das dicas é reservado no mesmo instante em que o jogo desenha os cards, então nada
+pula de lugar embaixo do mouse.
 
 ## Segurança
 

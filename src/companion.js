@@ -55,6 +55,22 @@
     }
   }
 
+  /*
+   * Trabalho em pedaços: as simulações rodam em fatias curtas e devolvem o controle pro
+   * navegador entre elas, então cliques e animações do jogo nunca ficam esperando.
+   * Um job pode ser cancelado (ex.: você saiu da tela) e aí para na próxima fatia.
+   */
+  const CANCELLED = Symbol('pkc-cancelled');
+  const SLICE_MS = 10;
+  let sliceStart = 0;
+  const yieldNow = () => new Promise(r => setTimeout(r, 0));
+  async function breathe(job) {
+    if (performance.now() - sliceStart > SLICE_MS) { await yieldNow(); sliceStart = performance.now(); }
+    if (job && job.cancelled) throw CANCELLED;
+  }
+  let advJob = null; // job das dicas na tela (captura, itens, relíquias, boosts)
+  const cancelJob = j => { if (j) j.cancelled = true; };
+
   const TYPES = () => (typeof TYPE_CHART !== 'undefined' ? Object.keys(TYPE_CHART) : []);
   const eff = (atk, defTypes) => { try { return window.getTypeEffectiveness(atk, defTypes || []); } catch { return 1; } };
   const moveOf = mon => { try { return window.getMoveForPokemon(mon); } catch { return null; } };
@@ -80,6 +96,7 @@
     huntSound: true,
     sims: 300,
     catchAdvisor: true,
+    choiceAdvisor: true,      // notas S+..C em relíquias, itens e boosts
   };
   let cfg = { ...defaults };
   try { cfg = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch { /* ignore */ }
@@ -133,9 +150,9 @@
   const traitsMatter = () => { const s = S(); return !!(s && s.isEndlessMode); };
 
   // ------------------------------------------------------------ simulation ---
-  function battleConfig(team) {
+  function battleConfig(team, passivesOverride) {
     const s = S();
-    const passives = s.passives || [];
+    const passives = passivesOverride || s.passives || [];
     let c = null;
     try {
       if (s.isEndlessMode) {
@@ -151,23 +168,25 @@
   }
 
   /** Probabilidade de vitória por Monte Carlo. Não mexe no estado da run. */
-  function winRate(team, enemy, n) {
+  async function winRate(team, enemy, n, job = null) {
     const s = S();
     if (!team.length || !enemy || !enemy.length) return null;
-    return guarded(() => {
-      let wins = 0, survivors = 0;
-      for (let i = 0; i < n; i++) {
+    let wins = 0, survivors = 0;
+    for (let i = 0; i < n; i++) {
+      // cada luta é "guardada" (seed do jogo restaurada) e entre elas o navegador respira
+      const res = guarded(() => {
         window.seedRng((Math.random() * 4294967296) >>> 0);
         const pt = clone(team);
         try { if (fn('applyMegaEvolution')) pt.forEach(window.applyMegaEvolution); } catch { /* ignore */ }
-        const res = window.runBattle(pt, clone(enemy), s.items || [], [], null, battleConfig(pt), s.passives || []);
-        if (res && res.playerWon) {
-          wins++;
-          survivors += (res.pTeam || []).filter(m => m.currentHp > 0).length;
-        }
+        return window.runBattle(pt, clone(enemy), s.items || [], [], null, battleConfig(pt), s.passives || []);
+      });
+      if (res && res.playerWon) {
+        wins++;
+        survivors += (res.pTeam || []).filter(m => m.currentHp > 0).length;
       }
-      return { p: wins / n, avgSurvivors: wins ? survivors / wins : 0, n };
-    });
+      await breathe(job);
+    }
+    return { p: wins / n, avgSurvivors: wins ? survivors / wins : 0, n };
   }
 
   let bossCache = { key: null, data: null };
@@ -207,7 +226,7 @@
             if (sp) species.push(sp);
           }
           const team = guarded(() => species.map(sp => window.createInstance(sp, lvl, false, tr.moveTier != null ? tr.moveTier : 1)));
-          if (team.length) data = { name: tr.name || 'Chefe', type: tr.archetype && tr.archetype.type, team, approx: true };
+          if (team.length) data = { name: tr.name || 'o chefe do mapa', type: tr.archetype && tr.archetype.type, team, approx: true };
         }
       }
     } catch (e) {
@@ -239,7 +258,7 @@
     for (let k = 0; k < all.length; k++) {
       if (orderJob !== job) return null;
       const order = all[k];
-      const r = winRate(order.map(i => team[i]), enemy, quick);
+      const r = await winRate(order.map(i => team[i]), enemy, quick);
       scored.push({ order, p: r.p, alive: r.avgSurvivors, score: orderScore(r, team.length) });
       if (performance.now() - t > 25) { onProgress && onProgress(k / all.length * 0.6); await sleep(0); t = performance.now(); }
     }
@@ -249,7 +268,7 @@
     if (!top.some(x => x.order.every((v, i) => v === i))) top.push({ order: idx, p: 0, alive: 0, score: 0 });
     for (let k = 0; k < top.length; k++) {
       if (orderJob !== job) return null;
-      const r = winRate(top[k].order.map(i => team[i]), enemy, Math.max(300, cfg.sims));
+      const r = await winRate(top[k].order.map(i => team[i]), enemy, Math.max(300, cfg.sims));
       Object.assign(top[k], { p: r.p, alive: r.avgSurvivors, score: orderScore(r, team.length) });
       onProgress && onProgress(0.6 + 0.4 * (k + 1) / top.length);
       await sleep(0);
@@ -443,60 +462,108 @@
     if (!inst || !wraps.length || wraps.length !== inst.length) return;
     const s = S();
     const key = s.savedCatch.nodeId + '|' + inst.map(i => i._uid || i.name).join(',') + '|' + s.team.map(m => m._uid + ':' + m.level).join(',');
-    if (advisorKey === key && document.querySelector('.pkc-advice')) return;
-    advisorKey = key;
+    if (advisorKey === key && document.querySelector('#catch-choices .pkc-advice:not(.pkc-pending)')) return;
+    const job = advJob = { key, cancelled: false };
     const team = s.team;
-    const boss = hunt.running ? null : await nextBoss();
     const before = teamDefense(team);
     const beforeOff = teamOffense(team);
     const beforeTiers = traitTiers(team);
-    const base = boss ? winRate(team, boss.team, 200) : null;
     const room = team.length < 6; // o jogo aceita até 6; com time cheio ele pede pra trocar
 
-    inst.forEach((cand, i) => {
+    // 1) tudo que é instantâneo (tipos, cobertura, traits) aparece na hora
+    const staticLines = inst.map(cand => {
       const lines = [];
       if (cand.isAurora) lines.push('<b class="pkc-aurora">🌈 AURORA</b>');
       else if (cand.isShiny) lines.push('<b class="pkc-shiny">✨ SHINY</b>');
       const mt = moveType(cand);
       lines.push(`Ataca com <span class="pkc-t pkc-t-${mt.toLowerCase()}">${esc(tType(mt))}</span>`);
-
-      // cobertura nova
       const newHits = TYPES().filter(d => eff(mt, [d]) >= 2 && beforeOff.find(o => o.type === d).best < 2);
       if (newHits.length) lines.push('Nova cobertura: ' + newHits.map(t => esc(tType(t))).join(', '));
-
       // defesa: ele cobre ou piora as maiores fraquezas do time?
       const threats = before.filter(d => d.weak > 0 && d.score > 0).slice(0, 4).map(d => d.type);
       const covers = threats.filter(t => eff(t, cand.types) < 1);
       const stacks = threats.filter(t => eff(t, cand.types) >= 2);
       if (covers.length) lines.push('<span class="pkc-good">Resiste a ' + covers.map(t => esc(tType(t))).join(', ') + ' (fraqueza do time)</span>');
       if (stacks.length) lines.push('<span class="pkc-bad">Também é fraco a ' + stacks.map(t => esc(tType(t))).join(', ') + '</span>');
-
       if (traitsMatter()) {
         const afterTiers = traitTiers([...team, cand]);
         const ups = Object.keys(afterTiers).filter(t => (afterTiers[t] || 0) > (beforeTiers[t] || 0));
         if (ups.length) lines.push('Trait: ' + ups.map(t => `${esc(tType(t))} T${afterTiers[t]}`).join(', '));
       }
-
-      if (boss && base) {
-        let best = null;
-        if (room) best = { p: winRate([...team, cand], boss.team, 200).p, label: '' };
-        else {
-          team.forEach((m, j) => {
-            const t2 = team.slice(); t2[j] = cand;
-            const r = winRate(t2, boss.team, 120).p;
-            if (!best || r > best.p) best = { p: r, label: ` (no lugar de ${m.name})` };
-          });
-        }
-        const d = best.p - base.p;
-        const cls = d > 0.02 ? 'pkc-good' : d < -0.02 ? 'pkc-bad' : '';
-        lines.push(`vs ${esc(boss.name)}: <span class="${cls}">${pct(best.p)}</span> <small>(${d >= 0 ? '+' : ''}${Math.round(d * 100)} pts${esc(best.label)})</small>`);
-      }
-
-      let box = wraps[i].querySelector('.pkc-advice');
-      if (!box) { box = document.createElement('div'); box.className = 'pkc-advice'; wraps[i].appendChild(box); }
-      box.innerHTML = lines.join('<br>');
+      return lines;
     });
+    const boxes = wraps.map(w => {
+      let box = w.querySelector('.pkc-advice');
+      if (!box) { box = document.createElement('div'); w.appendChild(box); }
+      box.className = 'pkc-advice';
+      return box;
+    });
+    const boss = hunt.running ? null : await nextBoss();
+    const simLine = i => `<span class="pkc-sim" data-i="${i}">${boss ? `vs ${esc(boss.name)}: <small class="pkc-muted">calculando…</small>` : ''}</span>`;
+    boxes.forEach((box, i) => { box.innerHTML = staticLines[i].join('<br>') + (boss ? '<br>' + simLine(i) : ''); });
     highlightCatchCards();
+    if (!boss) { advisorKey = key; return; }
+
+    // 2) chance contra o chefe, em pedaços (mesmas sementes pra tudo: dá pra simular menos)
+    const passives = s.passives || [];
+    const base = await simPower(team, boss.team, passives, 100, 1, job);
+    for (let i = 0; i < inst.length; i++) {
+      const cand = inst[i];
+      let best = null;
+      if (room) best = { p: (await simPower([...team, cand], boss.team, passives, 100, 1, job)).p, label: '' };
+      else {
+        for (let j = 0; j < team.length; j++) {
+          const t2 = team.slice(); t2[j] = cand;
+          const r = (await simPower(t2, boss.team, passives, 60, 1, job)).p;
+          if (!best || r > best.p) best = { p: r, label: ` (no lugar de ${team[j].name})` };
+        }
+      }
+      const d = best.p - base.p;
+      const cls = d > 0.02 ? 'pkc-good' : d < -0.02 ? 'pkc-bad' : '';
+      const el = boxes[i].querySelector('.pkc-sim');
+      if (el) el.innerHTML = `vs ${esc(boss.name)}: <span class="${cls}">${pct(best.p)}</span> <small>(${d >= 0 ? '+' : ''}${Math.round(d * 100)} pts${esc(best.label)})</small>`;
+    }    advisorKey = key; // só marca como pronto quando terminou tudo (se cancelar no meio, refaz)
+  }
+
+  /*
+   * Reserva o espaço das dicas no MESMO instante em que o jogo desenha os cards
+   * (antes de a tela aparecer), pra nada se mexer quando as dicas chegarem.
+   * Card que pula de lugar embaixo do mouse = clique no lugar errado.
+   */
+  function reserveAdviceSpace() {
+    if (hunt.running || blocked()) return;
+    if (cfg.catchAdvisor) {
+      for (const w of document.querySelectorAll('#catch-choices .poke-choice-wrap')) {
+        if (!w.querySelector('.pkc-advice')) {
+          const ph = document.createElement('div');
+          ph.className = 'pkc-advice pkc-pending';
+          ph.textContent = 'Analisando…';
+          w.appendChild(ph);
+        }
+      }
+    }
+    if (cfg.choiceAdvisor) {
+      const box = document.getElementById('passive-choices');
+      const h2 = document.querySelector('#passive-screen h2');
+      let martTitle = null;
+      try { martTitle = window.t('mart.title'); } catch { /* ignore */ }
+      const isMart = !!(h2 && martTitle && h2.textContent.trim() === martTitle);
+      const groups = [
+        document.querySelectorAll('#item-choices .item-card'),
+        box && !box.classList.contains('is-replace-grid') && !isMart ? box.querySelectorAll('.passive-card') : [],
+        document.querySelectorAll('#stat-buff-choices .stat-buff-poke-wrap'),
+      ];
+      for (const cards of groups) {
+        for (const c of cards) {
+          if (!c.querySelector(':scope > .pkc-tier')) {
+            const ph = document.createElement('div');
+            ph.className = 'pkc-tier pkc-pending';
+            ph.textContent = 'Calculando nota…';
+            c.appendChild(ph);
+          }
+        }
+      }
+    }
   }
 
   function highlightCatchCards() {
@@ -505,6 +572,499 @@
     const wraps = [...document.querySelectorAll('#catch-choices .poke-choice-wrap')];
     inst.forEach((c, i) => { if (wraps[i]) wraps[i].classList.toggle('pkc-hit', !!(c.isShiny || c.isAurora)); });
   }
+
+  // -------------------------------------------------------- choice advisor ---
+  /*
+   * Notas S+ / S / A / B / C para relíquias, itens e boosts de atributo.
+   * A nota soma duas coisas:
+   *  - simulação: quanto a opção melhora as lutas contra o próximo chefe (mesmas
+   *    sementes pra todas as opções, então a diferença vem da opção e não da sorte);
+   *  - sinergia: regras com o motivo explicado (tipo do golpe, traits, HP do time...).
+   */
+  const TIERS = [['S+', 14], ['S', 9], ['A', 5], ['B', 1.5], ['C', -Infinity]];
+  const tierOf = score => TIERS.find(([, min]) => score >= min)[0];
+  const SIM_N = 120;
+  const SIM_WEIGHT = 60; // +0,1 de "poder" (~+10% de vitória) ≈ 6 pontos
+
+  const ARCHETYPE_PT = {
+    damage: 'mais dano', defense: 'defesa', heal: 'cura', xp: 'XP / níveis', eot: 'efeito por turno',
+    start: 'efeito no início da luta', onhit: 'efeito ao acertar', ko: 'efeito ao nocautear', faint: 'efeito ao desmaiar',
+    survive: 'sobrevivência', stats: 'atributos', drops: 'drops', speed: 'velocidade', crit: 'crítico',
+    dodge: 'esquiva', status: 'status', trait: 'traits', charm: 'fora de batalha',
+  };
+
+  let simSeeds = [];
+  function seedsFor(n) {
+    while (simSeeds.length < n) simSeeds.push((Math.random() * 4294967296) >>> 0);
+    return simSeeds.slice(0, n);
+  }
+
+  const hpFrac = arr => {
+    let c = 0, m = 0;
+    for (const x of arr || []) { c += Math.max(0, x.currentHp || 0); m += x.maxHp || 0; }
+    return m ? c / m : 0;
+  };
+
+  /**
+   * "Poder" do time contra o inimigo: vitória vale 1 (+ até 0,5 pelo HP que sobra);
+   * derrota vale até 0,9 pelo quanto do HP do inimigo você tirou.
+   */
+  async function simPower(team, enemy, passives, n = SIM_N, teamHp = curTeamHp, job = advJob) {
+    const s = S();
+    const seeds = seedsFor(n);
+    let tot = 0, wins = 0;
+    for (const sd of seeds) {
+      const res = guarded(() => {
+        window.seedRng(sd);
+        const pt = clone(scaleHp(team, teamHp));
+        try { if (fn('applyMegaEvolution')) pt.forEach(window.applyMegaEvolution); } catch { /* ignore */ }
+        return window.runBattle(pt, clone(enemy), s.items || [], [], null, battleConfig(pt, passives), passives);
+      });
+      if (res) {
+        if (res.playerWon) { wins++; tot += 1 + 0.5 * hpFrac(res.pTeam); } else tot += 0.9 * (1 - hpFrac(res.eTeam));
+      }
+      await breathe(job);
+    }
+    return { power: tot / seeds.length, p: wins / seeds.length };
+  }
+
+  const withLevels = (m, n) => {
+    const c = clone(m);
+    try {
+      const oldBase = window.calcHp(c.baseStats.hp, c.level);
+      const ratio = oldBase ? c.maxHp / oldBase : 1;
+      c.level += n;
+      const newMax = Math.round(window.calcHp(c.baseStats.hp, c.level) * ratio);
+      c.currentHp = c.currentHp > 0 ? Math.min(newMax, c.currentHp + (newMax - c.maxHp)) : c.currentHp;
+      c.maxHp = newMax;
+    } catch { c.level += n; }
+    return c;
+  };
+
+  const withBuff = (m, stat) => {
+    const c = clone(m);
+    c.statBuffs = { ...(c.statBuffs || {}) };
+    const inc = k => { c.statBuffs[k] = Math.min(10, (c.statBuffs[k] || 0) + 1); };
+    inc(stat);
+    if (stat === 'atk') inc('special');
+    if (stat === 'special') inc('atk');
+    if (stat === 'hp') {
+      try { const add = Math.floor(window.calcHp(c.baseStats.hp, c.level) * 0.05); c.maxHp += add; if (c.currentHp > 0) c.currentHp += add; } catch { /* ignore */ }
+    }
+    return c;
+  };
+
+  const specialAttacker = m => { try { return !!window.attacksWithSpecial(m); } catch { return false; } };
+  const canEvo = m => { try { return !!window.canEvolve(m.speciesId); } catch { return false; } };
+  const itemNameOf = it => { try { return window.tItemName(it.id, it.name) || it.name; } catch { return it.name; } };
+  const teamNames = arr => arr.map(m => m.name).join(', ');
+
+  /** Testa variações do time e devolve a melhor (com o ganho em pontos). */
+  async function bestVariant(base, enemy, passives, variants) {
+    let best = null;
+    for (const v of variants) {
+      const r = await simPower(v.team, enemy, passives);
+      const pts = (r.power - base.power) * SIM_WEIGHT;
+      if (!best || pts > best.pts) best = { ...v, pts, p: r.p };
+    }
+    return best;
+  }
+
+  async function evaluateItem(item, ctx) {
+    const s = S();
+    const team = s.team;
+    const why = [];
+    let pts = 0, holder = null, simPts = null;
+    const invType = {};
+    try { for (const [t, id] of Object.entries(TYPE_ITEM_MAP || {})) invType[id] = t; } catch { /* ignore */ }
+
+    if (item.usable) {
+      if (item.id === 'sacred_ash') {
+        const fainted = team.filter(m => m.currentHp <= 0);
+        const hurt = team.filter(m => m.currentHp > 0 && m.currentHp < m.maxHp * 0.5);
+        if (fainted.length) { pts += 9; why.push(`Revive ${teamNames(fainted)}`); }
+        else if (hurt.length) { pts += 4; why.push(`Cura ${teamNames(hurt)} (menos de 50% de HP)`); }
+        else why.push('Time com HP bom: guarda pra depois');
+      } else if (item.id === 'moon_stone') {
+        const evo = team.filter(m => { try { return window.canEverEvolve(m); } catch { return false; } });
+        if (evo.length) { pts += 5; why.push(`Evolui na hora: ${teamNames(evo)}`); } else { pts -= 4; why.push('Ninguém do time pode evoluir'); }
+      } else if (ctx.enemy && (item.id === 'rare_candy' || item.id === 'tm_normal')) {
+        const variants = team.map((m, i) => {
+          if (item.id === 'tm_normal' && (m.moveTier != null ? m.moveTier : 1) >= 2) return null;
+          const t2 = team.slice();
+          t2[i] = item.id === 'rare_candy' ? withLevels(m, 3) : { ...clone(m), moveTier: Math.min(2, (m.moveTier != null ? m.moveTier : 1) + 1) };
+          return { team: t2, holder: m };
+        }).filter(Boolean);
+        if (!variants.length) { pts -= 4; why.push('Todos já estão com o golpe no máximo'); }
+        else {
+          const b = await bestVariant(ctx.base, ctx.enemy, s.passives || [], variants);
+          simPts = b.pts; holder = b.holder;
+          why.push(item.id === 'rare_candy' ? `+3 níveis em ${b.holder.name}` : `Golpe mais forte pra ${b.holder.name}`);
+        }
+      }
+    } else {
+      // item segurado: testa em cada Pokémon e fica com o melhor portador
+      const T = invType[item.id];
+      let candidates = team.map((m, i) => i);
+      if (T) {
+        // Mecânica do jogo: quem segura o item do próprio tipo passa a atacar com ele, com +40% de dano.
+        const users = team.filter(m => (m.types || []).includes(T));
+        candidates = team.map((m, i) => i).filter(i => (team[i].types || []).includes(T));
+        if (users.length) {
+          pts += 3;
+          why.push(`+40% no dano ${tType(T)} de ${teamNames(users)}`);
+          const switchers = users.filter(m => moveType(m) !== T);
+          if (switchers.length) why.push(`${teamNames(switchers)} passa a atacar com ${tType(T)}`);
+        } else { pts -= 6; why.push(`Ninguém do time é do tipo ${tType(T)}: não faz efeito`); }
+      }
+      if (item.id === 'choice_band') {
+        const phys = team.filter(m => !specialAttacker(m));
+        if (phys.length) why.push(`Atacantes físicos: ${teamNames(phys)}`); else { pts -= 6; why.push('Ninguém ataca físico'); }
+      }
+      if (item.id === 'choice_specs') {
+        const spec = team.filter(specialAttacker);
+        if (spec.length) why.push(`Atacantes especiais: ${teamNames(spec)}`); else { pts -= 6; why.push('Ninguém ataca especial'); }
+      }
+      if (item.id === 'eviolite') {
+        const ev = team.filter(canEvo);
+        if (ev.length) why.push(`${teamNames(ev)} ainda evolui (mas o item trava a evolução)`); else { pts -= 6; why.push('Todo o time já evoluiu'); }
+      }
+      if (item.id === 'metronome') {
+        const dual = team.filter(m => (m.types || []).length > 1);
+        if (dual.length) why.push(`Tipo duplo: ${teamNames(dual)} passam a atacar com o outro tipo`); else { pts -= 6; why.push('Ninguém tem tipo duplo'); }
+      }
+      if (item.id === 'lucky_egg') { pts += 2; why.push('Mais níveis ao longo da run: melhor cedo'); }
+      if (ctx.enemy && candidates.length) {
+        const variants = candidates.map(i => {
+          const t2 = team.slice(); t2[i] = { ...clone(team[i]), heldItem: { ...item } };
+          return { team: t2, holder: team[i] };
+        });
+        const b = await bestVariant(ctx.base, ctx.enemy, s.passives || [], variants);
+        simPts = b.pts; holder = b.holder;
+      }
+      if (holder && ctx.enemy && simPts != null && simPts >= 1) {
+        const hi = team.indexOf(holder);
+        if (hi === 0) why.push(`${holder.name} vai na frente: é quem mais luta`);
+        if (T || ['choice_specs', 'choice_band', 'metronome'].includes(item.id)) {
+          const mt = T && (holder.types || []).includes(T) ? T : moveType(holder);
+          const effs = ctx.enemy.map(e => eff(mt, e.types));
+          const avg = effs.reduce((a, b) => a + b, 0) / effs.length;
+          if (avg >= 2) why.push(`${tType(mt)} é super efetivo no time do chefe`);
+          else if (avg < 1) why.push(`Ajuda mesmo com ${tType(mt)} resistido pelo chefe`);
+        }
+      }
+      if (simPts != null && Math.abs(simPts) < 1 && pts === 0) {
+        holder = null;
+        why.push('Efeito fora das lutas (ou pequeno demais pra aparecer)');
+      }
+      if (holder && holder.heldItem) why.push(`Troca o ${itemNameOf(holder.heldItem)} de ${holder.name}`);
+    }
+    return { ...finish(pts, simPts, why, holder, ctx), verb: item.usable ? 'Usar em' : 'Equipar em' };
+  }
+
+  async function evaluateRelic(relic, ctx) {
+    const s = S();
+    const team = s.team;
+    const why = [];
+    let pts = 0, simPts = null;
+    let syn = [];
+    try { syn = window.passiveSynergyTypes(relic.id) || []; } catch { syn = []; }
+    const tiers = traitTiers(team);
+    const arche = (() => { try { return window.passiveArchetype(relic.id); } catch { return null; } })();
+
+    if (relic.curse) { pts -= 8; why.push('Maldição: tem um lado ruim forte'); }
+    if (relic.charm) { pts -= 3; why.push('Charm: não muda as lutas' + (relic.id === 'shiny_rate' ? ' (mas dobra a chance de shiny!)' : '')); }
+    if (relic.capstone) { pts += 6; why.push(`Relíquia final de ${tType(relic.capstone)}`); }
+
+    if (ctx.enemy && !relic.charm) {
+      const passives = [...(s.passives || []), { ...relic, enabled: true }];
+      const r = await simPower(team, ctx.enemy, passives);
+      simPts = (r.power - ctx.base.power) * SIM_WEIGHT;
+    }
+
+    if (syn.length) {
+      const members = team.filter(m => (m.types || []).some(t => syn.includes(t)));
+      const active = syn.filter(t => (tiers[t] || 0) > 0);
+      if (active.length) { pts += 5; why.push(`Trait ${active.map(t => `${tType(t)} T${tiers[t]}`).join(', ')} ativo no seu time`); }
+      if (members.length) { pts += Math.min(6, 2 * members.length); why.push(`Combina com ${teamNames(members)}`); }
+      else if (simPts != null && simPts >= 1) { pts -= 1; why.push(`É do kit ${syn.map(tType).join('/')}, mas ajuda seu time mesmo assim`); }
+      else { pts -= 6; why.push(`Nenhum Pokémon ${syn.map(tType).join('/')} no time`); }
+    } else if (relic.kit === 'generalist') {
+      pts += 1; why.push('Funciona com qualquer time');
+    }
+    if (relic.id === 'shiny_dmg' || relic.id === 'shiny_def' || relic.id === 'shiny_first') {
+      const sh = team.filter(m => m.isShiny || m.isAurora);
+      if (sh.length) { pts += 4; why.push(`Seus shinies: ${teamNames(sh)}`); } else { pts -= 5; why.push('Nenhum shiny no time'); }
+    }
+    if (arche && ARCHETYPE_PT[arche] && !relic.charm) why.push('Foco: ' + ARCHETYPE_PT[arche]);
+
+    try {
+      const free = window.passiveSlotCap() - window.combatPassiveCount(s.passives || []);
+      if (free <= 0 && !relic.charm && !relic.oneShot) why.push('Slots cheios: vai substituir uma relíquia');
+    } catch { /* ignore */ }
+
+    return finish(pts, simPts, why, null, ctx);
+  }
+
+  function finish(pts, simPts, why, holder, ctx) {
+    let score = pts;
+    if (simPts != null) {
+      score += simPts;
+      const r = Math.round(simPts);
+      if (Math.abs(r) >= 1) why.unshift(`${r > 0 ? '+' : ''}${r} pts na simulação contra ${ctx.enemyName}`);
+      else why.push(`Quase não muda a luta contra ${ctx.enemyName}`);
+    }
+    return { score, tier: tierOf(score), why: why.slice(0, 4), holder };
+  }
+
+  /*
+   * Se a luta contra o chefe é fácil (ou difícil) demais, toda opção dá 100% (ou 0%) e
+   * não dá pra comparar. Então a simulação ALONGA a luta até ficar perto de 50%:
+   *  - fácil demais: o chefe ganha mais vida;
+   *  - difícil demais: o seu time ganha mais vida.
+   * (Encurtar a luta não serve: com tudo morrendo num golpe, bônus de dano não aparece.)
+   */
+  let calCache = { key: null, cal: { side: null, f: 1 } };
+  let curTeamHp = 1; // multiplicador de vida do seu time durante uma avaliação
+  const scaleHp = (mons, f) => (f === 1 ? mons : mons.map(e => {
+    const c = clone(e);
+    c.maxHp = Math.max(1, Math.round(e.maxHp * f));
+    c.currentHp = e.currentHp > 0 ? Math.max(1, Math.round(e.currentHp * f)) : e.currentHp;
+    return c;
+  }));
+  async function calibrate(team, enemy, passives, key) {
+    if (calCache.key === key) return calCache.cal;
+    const run = async (side, f) => side === 'enemy'
+      ? (await simPower(team, scaleHp(enemy, f), passives, 60, 1)).p
+      : (await simPower(team, enemy, passives, 60, f)).p;
+    const p0 = await run('enemy', 1);
+    let cal = { side: null, f: 1 };
+    if (p0 > 0.8 || p0 < 0.2) {
+      const side = p0 > 0.8 ? 'enemy' : 'team';
+      let lo = 0, hi = Math.log(60), best = { f: 1, d: Math.abs(p0 - 0.5) };
+      for (let k = 0; k < 8; k++) {
+        const mid = (lo + hi) / 2, f = Math.exp(mid), p = await run(side, f);
+        if (Math.abs(p - 0.5) < best.d) best = { f, d: Math.abs(p - 0.5) };
+        const tooEasy = p > 0.5;
+        // aumentar a vida do chefe deixa mais difícil; aumentar a sua deixa mais fácil
+        if ((side === 'enemy') === tooEasy) lo = mid; else hi = mid;
+      }
+      cal = { side, f: best.f };
+    }
+    calCache = { key, cal };
+    return cal;
+  }
+
+  async function advisorCtx() {
+    const s = S();
+    const boss = ui.boss;
+    if (!boss || !boss.team || !s.team.length) return { enemy: null, enemyName: '', base: null };
+    const passives = s.passives || [];
+    const key = bossKey() + '|' + s.team.map(m => `${m._uid}:${m.level}:${m.currentHp}:${m.heldItem ? m.heldItem.id : ''}`).join(',') + '|' + passives.map(p => p.id).join(',');
+    const cal = await calibrate(s.team, boss.team, passives, key);
+    const enemy = cal.side === 'enemy' ? scaleHp(boss.team, cal.f) : boss.team;
+    curTeamHp = cal.side === 'team' ? cal.f : 1;
+    return { enemy, enemyName: boss.name, cal, base: await simPower(s.team, enemy, passives) };
+  }
+
+  function tierBadge(res, isBest) {
+    const cls = 'pkc-tier-' + res.tier.replace('+', 'p');
+    return `<div class="pkc-tier ${cls}">
+      <div class="pkc-tier-top"><span class="pkc-tier-g">${res.tier}</span>${isBest ? '<span class="pkc-tier-best">MELHOR</span>' : ''}</div>
+      ${res.holder ? `<div class="pkc-tier-holder">${res.verb || 'Equipar em'} <b>${esc(res.holder.name)}</b></div>` : ''}
+      <ul>${res.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>`;
+  }
+
+  function paintCards(cards, results) {
+    const valid = results.filter(Boolean);
+    const sorted = valid.map(r => r.score).sort((a, b) => b - a);
+    // "★ MELHOR" só quando um ganha com folga (empate não tem melhor)
+    const bestScore = sorted.length > 1 && sorted[0] - sorted[1] >= 1 ? sorted[0] : null;
+    cards.forEach((card, i) => {
+      const r = results[i];
+      let box = card.querySelector(':scope > .pkc-tier');
+      if (!r) { if (box) box.remove(); return; }
+      const html = tierBadge(r, r.score === bestScore && r.tier !== 'C');
+      if (!box) { box = document.createElement('div'); card.appendChild(box); }
+      box.outerHTML = html;
+    });
+  }
+
+  let relicIndex = null;
+  function relicByCardName(name) {
+    if (!relicIndex) {
+      relicIndex = new Map();
+      try {
+        for (const p of PASSIVE_ITEM_POOL) {
+          relicIndex.set(p.name.trim().toLowerCase(), p);
+          try { relicIndex.set(String(window.tItemName(p.id, p.name)).trim().toLowerCase(), p); } catch { /* ignore */ }
+        }
+      } catch { /* ignore */ }
+    }
+    return relicIndex.get(String(name || '').trim().toLowerCase()) || null;
+  }
+
+  function itemById(id) {
+    try {
+      const all = [...ITEM_POOL, ...USABLE_ITEM_POOL];
+      const f = all.find(x => x.id === id);
+      if (f) return f;
+      if (typeof MEGA_STONE_BY_ID !== 'undefined' && MEGA_STONE_BY_ID[id] && fn('makeMegaStoneItem')) return window.makeMegaStoneItem(MEGA_STONE_BY_ID[id]);
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  let choiceKey = null;
+  async function choiceAdvisor() {
+    if (!cfg.choiceAdvisor || blocked() || hunt.running) return;
+    const s = S();
+    if (!s || !s.team || !s.team.length) return;
+    const scr = screenId();
+    if (scr !== 'item-screen' && scr !== 'passive-screen' && scr !== 'stat-buff-screen') return;
+    if (!ui.boss) ui.boss = await nextBoss();
+    const teamSig = s.team.map(m => `${m._uid}:${m.level}:${m.currentHp}:${m.heldItem ? m.heldItem.id : ''}`).join(',') + '|' + (s.passives || []).map(p => p.id).join(',');
+
+    if (scr === 'item-screen') {
+      const cards = [...document.querySelectorAll('#item-choices .item-card')];
+      const ids = (s.itemOffer && s.itemOffer.ids) || [];
+      if (!cards.length || cards.length !== ids.length) return;
+      const key = 'item|' + ids.join(',') + '|' + teamSig;
+      if (key === choiceKey && document.querySelector('#item-choices .pkc-tier:not(.pkc-pending)')) return;
+      advJob = { key, cancelled: false };
+      const ctx = await advisorCtx();
+      const results = [];
+      for (const id of ids) { const it = itemById(id); results.push(it ? await evaluateItem(it, ctx) : null); }
+      paintCards(cards, results);
+      choiceKey = key;
+    } else if (scr === 'passive-screen') {
+      const box = document.getElementById('passive-choices');
+      if (!box || box.classList.contains('is-replace-grid')) return;
+      const h2 = document.querySelector('#passive-screen h2');
+      let martTitle = null;
+      try { martTitle = window.t('mart.title'); } catch { /* ignore */ }
+      if (h2 && martTitle && h2.textContent.trim() === martTitle) return; // loja de venda: não é escolha de relíquia
+      const cards = [...box.querySelectorAll('.passive-card')];
+      if (!cards.length) return;
+      const names = cards.map(c => (c.querySelector('.item-name') || {}).textContent || '');
+      const key = 'relic|' + names.join(',') + '|' + teamSig;
+      if (key === choiceKey && box.querySelector('.pkc-tier:not(.pkc-pending)')) return;
+      advJob = { key, cancelled: false };
+      const ctx = await advisorCtx();
+      const results = [];
+      for (const n of names) { const r = relicByCardName(n); results.push(r ? await evaluateRelic(r, ctx) : null); }
+      paintCards(cards, results);
+      choiceKey = key;
+    } else if (scr === 'stat-buff-screen') {
+      if (buffCache.key !== teamSig) advJob = { key: 'buff|' + teamSig, cancelled: false };
+      await statBuffAdvisor(teamSig);
+    }
+  }
+
+  const BUFF_STATS = [['hp', 'HP'], ['atk', 'ATK'], ['def', 'DEF'], ['speed', 'SPE'], ['special', 'SP.A'], ['spdef', 'SP.D']];
+  let buffCache = { key: null, table: null };
+
+  async function buffTable(teamSig) {
+    const s = S();
+    if (buffCache.key === teamSig) return buffCache.table;
+    const ctx = await advisorCtx();
+    let maxPts = 10;
+    try { maxPts = window.getMaxBuffPoints(); } catch { /* ignore */ }
+    const stat = (mon, k) => { try { return window.getEffectiveStat(mon, k, mon.heldItem ? [mon.heldItem] : []); } catch { return 0; } };
+    const enemy = (ui.boss && ui.boss.team) || [];
+    // quem mais causa dano: ataque efetivo × eficácia média do golpe contra o chefe
+    const dmg = s.team.map((m, i) => {
+      const atk = stat(m, specialAttacker(m) ? 'special' : 'atk');
+      const mt = moveType(m);
+      const e = enemy.length ? enemy.reduce((a, x) => a + eff(mt, x.types), 0) / enemy.length : 1;
+      return { i, v: m.currentHp > 0 ? atk * e * ((m.types || []).includes(mt) ? 1.5 : 1) : 0 };
+    });
+    const dealers = dmg.sort((a, b) => b.v - a.v).map(x => x.i);
+    const bossPhysical = enemy.length ? enemy.filter(e => !specialAttacker(e)).length / enemy.length : 0.5;
+    const table = [];
+    for (let i = 0; i < s.team.length; i++) table.push(await (async m => {
+      let used = 0;
+      try { used = window.getTotalBuffPoints(m.statBuffs || {}); } catch { /* ignore */ }
+      const skip = specialAttacker(m) ? 'atk' : 'special'; // o jogo só mostra o atributo de ataque que ele usa
+      const stats = [];
+      for (const [k, label] of BUFF_STATS.filter(([kk]) => kk !== skip)) stats.push(await (async () => {
+        if (used >= maxPts || ((m.statBuffs || {})[k] || 0) >= 10) return { k, label, res: null };
+        const why = [];
+        let pts = 1; // fica salvo pra linha evolutiva: sempre vale um pouco
+        const atkStat = specialAttacker(m) ? 'special' : 'atk';
+        if (k === atkStat) {
+          const rank = dealers.indexOf(i);
+          if (rank === 0) { pts += 6; why.push(`${m.name} é quem mais causa dano no time`); }
+          else if (rank === 1) { pts += 3; why.push(`${m.name} é o 2º que mais causa dano`); }
+          else why.push(`Aumenta o ataque que ${m.name} usa`);
+        } else if (k === 'speed') {
+          const now = stat(m, 'speed'), after = stat(withBuff(m, 'speed'), 'speed');
+          const flips = enemy.filter(e => { const es = stat(e, 'speed'); return now <= es && after > es; });
+          if (flips.length) { pts += 8; why.push(`Passa a atacar antes de ${teamNames(flips)}`); }
+          else {
+            const slower = enemy.filter(e => stat(e, 'speed') >= now);
+            why.push(slower.length ? `Ainda fica mais lento que ${teamNames(slower)}` : 'Já é mais rápido que o time do chefe');
+          }
+        } else if (k === 'hp' || k === 'def' || k === 'spdef') {
+          if (i === 0) { pts += 3; why.push(`${m.name} vai na frente: é quem mais apanha`); }
+          if (k === 'def' && bossPhysical > 0.6) { pts += 2; why.push('O chefe ataca mais com golpes físicos'); }
+          if (k === 'spdef' && bossPhysical < 0.4) { pts += 2; why.push('O chefe ataca mais com golpes especiais'); }
+          if (k === 'hp') why.push('+5% de HP máximo');
+        }
+        let simPts = null;
+        if (ctx.enemy) {
+          const t2 = s.team.slice(); t2[i] = withBuff(m, k);
+          // a simulação entra com peso limitado: com números pequenos o arredondamento distorce
+          simPts = Math.max(-2, Math.min(4, ((await simPower(t2, ctx.enemy, s.passives || [])).power - ctx.base.power) * SIM_WEIGHT));
+        }
+        why.push('Fica salvo pra linha evolutiva nas próximas runs');
+        return { k, label, res: finish(pts, simPts, why, null, ctx) };
+      })());
+      const best = stats.filter(x => x.res).sort((a, b) => b.res.score - a.res.score)[0] || null;
+      return { mon: m, stats, best };
+    })(s.team[i]));
+    buffCache = { key: teamSig, table };
+    return table;
+  }
+
+  async function statBuffAdvisor(teamSig) {
+    const s = S();
+    const table = await buffTable(teamSig);
+    const wraps = [...document.querySelectorAll('#stat-buff-choices .stat-buff-poke-wrap')];
+    if (wraps.length) {
+      // passo 1: escolher o Pokémon
+      if (wraps.length !== table.length) return;
+      const results = table.map(row => row.best ? { ...row.best.res, why: [`Melhor atributo: ${row.best.label}`, ...row.best.res.why.slice(0, 2)] } : null);
+      if (!wraps[0].querySelector(':scope > .pkc-tier:not(.pkc-pending)')) paintCards(wraps, results);
+      return;
+    }
+    // passo 2: escolher o atributo do Pokémon aberto (título = nome dele)
+    const rows = [...document.querySelectorAll('#stat-buff-choices .stat-buff-row')];
+    if (!rows.length || rows[0].querySelector('.pkc-chip')) return;
+    const title = (document.getElementById('stat-buff-title') || {}).textContent || '';
+    const idx = s.team.findIndex(m => { try { return window.displayName(m) === title; } catch { return m.name === title; } });
+    if (idx < 0) return;
+    const stats = table[idx].stats;
+    if (stats.length !== rows.length) return;
+    const sc = stats.filter(x => x.res).map(x => x.res.score).sort((a, b) => b - a);
+    const bestScore = sc.length > 1 && sc[0] - sc[1] >= 0.5 ? sc[0] : null;
+    rows.forEach((row, i) => {
+      const r = stats[i].res;
+      if (!r) return;
+      const chip = document.createElement('span');
+      chip.className = 'pkc-chip pkc-tier-' + r.tier.replace('+', 'p') + (r.score === bestScore ? ' pkc-chip-best' : '');
+      chip.textContent = r.tier;
+      chip.title = r.why.join(' · ');
+      row.appendChild(chip);
+    });
+  }
+
+  // Diagnóstico pelo console: __pkcDebug.ctx(), __pkcDebug.relic('id')
+  window.__pkcDebug = {
+    ctx: async () => { const c = await advisorCtx(); return { cal: c.cal, base: c.base, enemy: c.enemy && c.enemy.map(e => e.name + ' Lv' + e.level) }; },
+    relic: async id => evaluateRelic(PASSIVE_ITEM_POOL.find(p => p.id === id), await advisorCtx()),
+    item: async id => evaluateItem(itemById(id), await advisorCtx()),
+    buffs: async () => (await buffTable('debug-' + Date.now())).map(r => ({ mon: r.mon.name, best: r.best && r.best.label, stats: r.stats.map(x => x.label + ':' + (x.res ? x.res.tier + ' ' + x.res.score.toFixed(1) : '-')).join(' ') })),
+  };
 
   // -------------------------------------------------------------------- UI ---
   let root = null;
@@ -576,7 +1136,9 @@
 
   // Fora de uma run (tela inicial, escolha de região/inicial) o painel fica só na barrinha
   // pra não tapar os botões do jogo. Abrir na mão (+) vale até sair dessas telas.
-  const MENU_SCREENS = ['title-screen', 'history-region-select', 'trainer-screen', 'starter-screen'];
+  const MENU_SCREENS = ['title-screen', 'history-region-select', 'trainer-screen', 'starter-screen',
+    // telas de escolha: as notas já aparecem nos cards, o painel só atrapalharia
+    'item-screen', 'passive-screen', 'stat-buff-screen'];
   let forcedOpenOn = null;
   const onMenuScreen = () => MENU_SCREENS.includes(screenId());
   function isOpen() {
@@ -703,6 +1265,10 @@
       });
       h += `<details open><summary>Duelo de tipos</summary><ul class="pkc-list">${threats.join('')}</ul></details>`;
     }
+    h += `<details><summary>Dicas na tela do jogo</summary>
+      <label class="pkc-check"><input type="checkbox" data-cfg="catchAdvisor" ${cfg.catchAdvisor ? 'checked' : ''}> na captura</label>
+      <label class="pkc-check"><input type="checkbox" data-cfg="choiceAdvisor" ${cfg.choiceAdvisor ? 'checked' : ''}> notas S+ a C em relíquias, itens e boosts</label>
+      <p class="pkc-muted">S+ ≥ 14 · S ≥ 9 · A ≥ 5 · B ≥ 1,5 · C abaixo. Os pontos somam a simulação contra o próximo chefe e a sinergia com o seu time. Se a luta for fácil ou difícil demais, a simulação aumenta a vida de um dos lados até ficar perto de 50%, pra conseguir medir a diferença entre as opções.</p></details>`;
     return h;
   }
 
@@ -786,6 +1352,7 @@
     return [screenId(), s.runSeed, s.currentMap, (s.team || []).map(m => `${m._uid}:${m.level}:${m.currentHp}`).join(','), s.currentNode && s.currentNode.id].join('|');
   }
 
+  let fightJob = null;
   async function refreshTab(force) {
     if (!isOpen()) return;
     if (cfg.tab === 'fight' && !blocked() && !hunt.running) {
@@ -794,12 +1361,27 @@
         const prev = ui.boss;
         ui.boss = await nextBoss();
         if (force || ui.boss !== prev || !ui.bossWin) {
-          ui.bossWin = ui.boss ? winRate(s.team, ui.boss.team, cfg.sims) : null;
           if (ui.boss !== prev) ui.order = null;
+          cancelJob(fightJob);
+          const job = fightJob = { cancelled: false };
+          renderBody();
+          try {
+            ui.bossWin = ui.boss ? await winRate(s.team, ui.boss.team, cfg.sims, job) : null;
+          } catch (e) { if (e !== CANCELLED) throw e; return; }
         }
       }
     }
     renderBody();
+  }
+
+  /** Roda uma dica em segundo plano (uma por vez); cancelamento não é erro. */
+  let advisorBusy = false;
+  function runAdvisor(f) {
+    if (advisorBusy) return;
+    advisorBusy = true;
+    sliceStart = performance.now();
+    f().catch(e => { if (e !== CANCELLED) console.warn('[Pokelike Companion] dica', e); })
+      .finally(() => { advisorBusy = false; });
   }
 
   let ticking = false;
@@ -813,11 +1395,13 @@
         ui.lastSig = sig;
         if (screenChanged) { if (forcedOpenOn && forcedOpenOn !== screenId()) forcedOpenOn = null; render(); }
         ui.bossWin = null; ui.order = null;
-        if (!hunt.running) await refreshTab(false);
+        if (screenChanged) cancelJob(advJob);
+        if (!hunt.running) refreshTab(false).catch(e => console.warn('[Pokelike Companion] refresh', e));
       }
       if (hunt.running && cfg.tab === 'hunt') renderBody();
+      if (!hunt.running && ['item-screen', 'passive-screen', 'stat-buff-screen'].includes(screenId())) runAdvisor(choiceAdvisor);
       if (screenId() === 'catch-screen') {
-        if (hunt.running) highlightCatchCards(); else await catchAdvisor();
+        if (hunt.running) highlightCatchCards(); else runAdvisor(catchAdvisor);
       }
     } catch (e) {
       console.warn('[Pokelike Companion] tick', e);
@@ -832,6 +1416,9 @@
     if (!ok) { console.warn('[Pokelike Companion] jogo não carregou as funções esperadas — versão nova?'); return; }
     mount();
     setInterval(tick, 600);
+    // reserva o espaço das dicas antes de a tela ser pintada (callback roda antes do paint)
+    new MutationObserver(() => { try { reserveAdviceSpace(); } catch { /* ignore */ } })
+      .observe(document.body, { childList: true, subtree: true });
     console.info('[Pokelike Companion] pronto');
   })();
 })();
