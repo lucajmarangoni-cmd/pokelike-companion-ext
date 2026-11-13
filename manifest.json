@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Pokelike Companion",
+  "version": "0.1.0",
+  "description": "Painel de apoio para o Pokelike: caça automática de shiny/aurora, previsão de luta, melhor ordem do time, análise de tipos e traits.",
+  "content_scripts": [
+    {
+      "matches": ["https://pokelike.xyz/*"],
+      "js": ["src/companion.js"],
+      "css": ["src/companion.css"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ]
+}

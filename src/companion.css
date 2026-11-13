@@ -1,0 +1,223 @@
+/*
+ * Pokelike Companion — visual inspirado nos menus/caixas de diálogo da Gen 3
+ * (FireRed/Emerald) e no próprio Pokelike: creme + contorno escuro,
+ * fonte "Press Start 2P" nos títulos e "DotGothic16" no texto (o jogo já carrega as duas).
+ */
+#pkc-root {
+  --pkc-ink: #2a2a2a;
+  --pkc-cream: #f8f4e8;
+  --pkc-cream2: #e8e4d8;
+  --pkc-card: #e0dcd0;
+  --pkc-muted: #6c6658;
+  --pkc-red: #d8483c;
+  --pkc-red-dk: #a02c24;
+  --pkc-blue: #4a6cb8;
+  --pkc-blue-lt: #a8c0f0;
+  --pkc-gold: #d49a10;
+  --pkc-good: #1f7a33;
+  --pkc-bad: #c0302a;
+  --pkc-pixel: "Press Start 2P", monospace;
+  --pkc-text: "DotGothic16", "Press Start 2P", monospace;
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 2147483000;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
+  background: var(--pkc-cream);
+  color: var(--pkc-ink);
+  border: 4px solid var(--pkc-ink);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 3px #fff, inset 0 0 0 5px var(--pkc-card), 5px 5px 0 rgba(0, 0, 0, .35);
+  font: 13px/1.5 var(--pkc-text);
+  user-select: none;
+  image-rendering: pixelated;
+}
+#pkc-root.pkc-closed { width: auto; }
+#pkc-root * { box-sizing: border-box; }
+
+/* ---------- cabeçalho (faixa vermelha de Pokédex + Pokébola) ---------- */
+#pkc-root .pkc-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px;
+  background: linear-gradient(var(--pkc-red) 0 70%, var(--pkc-red-dk) 70%);
+  border-bottom: 3px solid var(--pkc-ink);
+  border-radius: 2px 2px 0 0;
+  cursor: move;
+}
+#pkc-root.pkc-closed .pkc-head { border-bottom: 0; border-radius: 2px; }
+#pkc-root .pkc-ball {
+  position: relative; flex: none; width: 16px; height: 16px; border-radius: 50%;
+  background: linear-gradient(#fff 0 44%, var(--pkc-ink) 44% 56%, #fff 56%);
+  border: 2px solid var(--pkc-ink);
+}
+#pkc-root .pkc-ball::before {
+  content: ""; position: absolute; top: 2px; left: 0; right: 0; height: 4px;
+  background: var(--pkc-red); border-radius: 6px 6px 0 0; margin: 0 1px;
+}
+#pkc-root .pkc-ball::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px;
+  transform: translate(-50%, -50%); background: #fff; border: 1px solid var(--pkc-ink); border-radius: 50%;
+}
+#pkc-root .pkc-title { font: 9px var(--pkc-pixel); color: #fff; text-shadow: 2px 2px 0 var(--pkc-red-dk), 1px 1px 0 var(--pkc-ink); letter-spacing: 1px; }
+#pkc-root .pkc-live {
+  font: 7px var(--pkc-pixel); color: var(--pkc-ink); background: #f8d030; padding: 3px 5px;
+  border: 2px solid var(--pkc-ink); animation: pkc-blink 1s steps(2) infinite;
+}
+#pkc-root .pkc-x {
+  margin-left: auto; width: 22px; height: 22px; padding: 0;
+  background: var(--pkc-cream); color: var(--pkc-ink); border: 2px solid var(--pkc-ink);
+  box-shadow: 2px 2px 0 var(--pkc-ink); cursor: pointer; font: 10px var(--pkc-pixel);
+}
+
+/* ---------- abas como menu START (cursor ▶ no item ativo) ---------- */
+#pkc-root .pkc-tabs {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  margin: 6px 8px 0; padding: 4px; background: #fff;
+  border: 3px solid var(--pkc-ink); border-radius: 4px;
+  box-shadow: inset 0 0 0 2px var(--pkc-blue-lt);
+}
+#pkc-root .pkc-tabs button {
+  display: flex; align-items: center; justify-content: center; gap: 2px;
+  padding: 6px 0; background: none; border: 0; cursor: pointer;
+  font: 8px var(--pkc-pixel); color: var(--pkc-muted);
+}
+#pkc-root .pkc-tabs button.on { color: var(--pkc-ink); }
+#pkc-root .pkc-cur { visibility: hidden; font-size: 7px; margin-right: 3px; }
+#pkc-root .pkc-tabs button.on .pkc-cur { visibility: visible; animation: pkc-nudge .6s steps(2) infinite; }
+#pkc-root .pkc-tabs button:hover { color: var(--pkc-ink); }
+
+#pkc-root .pkc-body { padding: 8px 12px 12px; overflow-y: auto; user-select: text; }
+
+/* ---------- formulários ---------- */
+#pkc-root label { display: block; margin: 0 0 7px; font: 7px/1.8 var(--pkc-pixel); color: var(--pkc-muted); text-transform: uppercase; }
+#pkc-root label.pkc-check { display: flex; align-items: center; gap: 6px; text-transform: none; font: 13px var(--pkc-text); color: var(--pkc-ink); }
+#pkc-root input:not([type=checkbox]), #pkc-root select {
+  display: block; width: 100%; margin-top: 2px; padding: 5px 6px;
+  background: #fff; color: var(--pkc-ink); border: 2px solid var(--pkc-ink); border-radius: 2px;
+  font: 13px var(--pkc-text); text-transform: none;
+}
+#pkc-root input[type=checkbox] { accent-color: var(--pkc-red); width: 14px; height: 14px; }
+#pkc-root .pkc-row { display: flex; gap: 8px; margin: 6px 0; }
+#pkc-root .pkc-row > * { flex: 1; }
+
+/* ---------- botões no estilo do jogo ---------- */
+#pkc-root .pkc-btn {
+  padding: 9px 8px; background: var(--pkc-ink); color: #fff;
+  border: 2px solid #000; border-radius: 2px; box-shadow: 3px 3px 0 rgba(0,0,0,.35), inset 0 -3px 0 #000;
+  cursor: pointer; font: 8px var(--pkc-pixel); text-transform: uppercase;
+}
+#pkc-root .pkc-btn[data-act=hunt-start] { background: var(--pkc-red); box-shadow: 3px 3px 0 rgba(0,0,0,.35), inset 0 -3px 0 var(--pkc-red-dk); }
+#pkc-root .pkc-btn:hover:not(:disabled) { filter: brightness(1.15); }
+#pkc-root .pkc-btn:disabled { opacity: .45; cursor: default; }
+#pkc-root .pkc-btn:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 1px 1px 0 rgba(0,0,0,.35), inset 0 -1px 0 #000; }
+#pkc-root .pkc-stop { background: #5a5a5a; }
+#pkc-root .pkc-link { background: none; border: 0; padding: 0; color: var(--pkc-blue); text-decoration: underline; cursor: pointer; font: 12px var(--pkc-text); }
+
+/* ---------- caixa de diálogo (texto do jogo) ---------- */
+#pkc-root .pkc-dialog {
+  position: relative; margin: 10px 0; padding: 9px 12px 14px;
+  background: #fff; border: 3px solid var(--pkc-ink); border-radius: 6px;
+  box-shadow: inset 0 0 0 3px var(--pkc-blue-lt), inset 0 0 0 4px var(--pkc-blue);
+}
+#pkc-root .pkc-dialog-found { box-shadow: inset 0 0 0 3px #f8e070, inset 0 0 0 4px var(--pkc-gold); animation: pkc-flash 1s ease-in-out 3; }
+#pkc-root .pkc-next { position: absolute; right: 10px; bottom: 2px; font-size: 9px; color: var(--pkc-red); animation: pkc-bob .8s steps(2) infinite; }
+#pkc-root .pkc-msg { margin-top: 4px; }
+#pkc-root .pkc-found { color: var(--pkc-red-dk); font-weight: 700; }
+
+/* ---------- barras de HP / EXP ---------- */
+#pkc-root .pkc-meter { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+#pkc-root .pkc-meter b { font: 12px var(--pkc-pixel); }
+#pkc-root .pkc-meter-lbl, #pkc-root .pkc-lbl { font: 7px var(--pkc-pixel); color: var(--pkc-muted); }
+#pkc-root .pkc-lbl { display: block; margin-bottom: 3px; }
+#pkc-root .pkc-meter-sub { font-size: 11px; color: var(--pkc-muted); }
+#pkc-root .pkc-bar {
+  position: relative; flex: 1; height: 8px; background: #485048;
+  border: 2px solid var(--pkc-ink); border-radius: 4px; overflow: hidden;
+}
+#pkc-root .pkc-bar > span {
+  display: block; height: 100%; background: #58d080; transition: width .3s steps(8);
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,.2), inset 0 2px 0 rgba(255,255,255,.35);
+}
+#pkc-root .pkc-bar.pkc-hp-mid > span { background: #f8c030; }
+#pkc-root .pkc-bar.pkc-hp-lo > span { background: #f85838; }
+#pkc-root .pkc-bar-exp { margin: 4px 0 2px; height: 6px; }
+#pkc-root .pkc-bar-exp > span { background: #40a8f8; }
+#pkc-root .pkc-hpbar { display: flex; align-items: center; gap: 4px; }
+#pkc-root .pkc-hp-tag { font: 7px var(--pkc-pixel); color: #f8b030; background: var(--pkc-ink); padding: 2px 3px; border-radius: 2px; }
+
+/* ---------- luta ---------- */
+#pkc-root .pkc-boss { margin-bottom: 4px; }
+#pkc-root .pkc-win {
+  margin: 8px 0; padding: 8px 10px; background: var(--pkc-cream2);
+  border: 3px solid var(--pkc-ink); border-radius: 0 10px 0 10px;
+}
+#pkc-root .pkc-win-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+#pkc-root .pkc-win-top b { font: 12px var(--pkc-pixel); }
+
+/* ---------- listas de Pokémon ---------- */
+#pkc-root ul, #pkc-root ol { margin: 4px 0 6px; padding-left: 18px; }
+#pkc-root .pkc-mons li, #pkc-root .pkc-list li { margin: 3px 0; }
+#pkc-root .pkc-spr { width: 40px; height: 40px; image-rendering: pixelated; flex: none; margin: -4px 0; }
+#pkc-root .pkc-sprites, #pkc-root .pkc-party { list-style: none; padding: 0; }
+#pkc-root .pkc-sprites li { display: flex; align-items: center; gap: 6px; padding: 2px 6px; background: var(--pkc-cream2); border: 2px solid var(--pkc-ink); border-radius: 4px; margin: 4px 0; }
+#pkc-root .pkc-party li {
+  display: flex; align-items: center; gap: 6px; margin: 5px 0; padding: 5px 8px;
+  background: linear-gradient(#78c8f0, #58a8e0); color: #fff;
+  border: 2px solid var(--pkc-ink); border-radius: 10px 4px 10px 4px;
+  text-shadow: 1px 1px 0 #305878;
+}
+#pkc-root .pkc-party-info { flex: 1; min-width: 0; }
+#pkc-root .pkc-party-name { display: flex; justify-content: space-between; font-weight: 700; }
+#pkc-root .pkc-party-name small { font: 7px var(--pkc-pixel); }
+#pkc-root .pkc-party-sub { margin-top: 2px; font-size: 11px; }
+#pkc-root .pkc-party .pkc-hp-tag { font-size: 6px; }
+
+#pkc-root details { margin: 10px 0 0; }
+#pkc-root summary { cursor: pointer; font: 8px/2 var(--pkc-pixel); color: var(--pkc-red-dk); text-transform: uppercase; }
+#pkc-root .pkc-log { max-height: 140px; overflow-y: auto; }
+#pkc-root p, #pkc-root li, #pkc-root div { color: inherit; }
+#pkc-root p { margin: 6px 0; color: var(--pkc-ink); }
+#pkc-root .pkc-num { font: 9px var(--pkc-pixel); width: 14px; }
+#pkc-root .pkc-muted { color: var(--pkc-muted); font-size: 12px; margin: 6px 0; }
+#pkc-root .pkc-good { color: var(--pkc-good); }
+#pkc-root .pkc-bad { color: var(--pkc-bad); }
+#pkc-root small { font-size: 11px; }
+
+/* ---------- chips de tipo (cores clássicas dos jogos) ---------- */
+.pkc-t {
+  display: inline-block; margin: 1px 2px 1px 0; padding: 2px 5px 1px;
+  font: 6px/1.2 "Press Start 2P", monospace; text-transform: uppercase; letter-spacing: .3px;
+  color: #fff; text-shadow: 1px 1px 0 rgba(0,0,0,.45);
+  border: 1px solid rgba(0,0,0,.55); border-radius: 2px; background: #a8a878; vertical-align: middle;
+}
+.pkc-t-normal { background: #a8a878; } .pkc-t-fire { background: #f08030; } .pkc-t-water { background: #6890f0; }
+.pkc-t-electric { background: #f8d030; } .pkc-t-grass { background: #78c850; } .pkc-t-ice { background: #98d8d8; }
+.pkc-t-fighting { background: #c03028; } .pkc-t-poison { background: #a040a0; } .pkc-t-ground { background: #e0c068; }
+.pkc-t-flying { background: #a890f0; } .pkc-t-psychic { background: #f85888; } .pkc-t-bug { background: #a8b820; }
+.pkc-t-rock { background: #b8a038; } .pkc-t-ghost { background: #705898; } .pkc-t-dragon { background: #7038f8; }
+.pkc-t-dark { background: #705848; } .pkc-t-steel { background: #b8b8d0; } .pkc-t-fairy { background: #ee99ac; }
+
+/* ---------- dicas na tela de captura do jogo ---------- */
+.pkc-advice {
+  position: relative; margin-top: 6px; padding: 6px 8px; pointer-events: none;
+  background: #fff; color: #2a2a2a; border: 3px solid #2a2a2a; border-radius: 6px;
+  box-shadow: inset 0 0 0 2px #a8c0f0, 3px 3px 0 rgba(0,0,0,.3);
+  font: 12px/1.4 "DotGothic16", "Press Start 2P", monospace; text-align: left;
+}
+.pkc-advice .pkc-good { color: #1f7a33; } .pkc-advice .pkc-bad { color: #c0302a; }
+.pkc-advice .pkc-shiny { color: #b07800; font-family: "Press Start 2P", monospace; font-size: 8px; }
+.pkc-advice .pkc-aurora {
+  font-family: "Press Start 2P", monospace; font-size: 8px;
+  background: linear-gradient(90deg, #17b8a6, #8b5cf6); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.pkc-hit > .poke-card { outline: 4px solid #f8d030; outline-offset: 2px; animation: pkc-glow 1s ease-in-out infinite alternate; }
+
+@keyframes pkc-glow { from { box-shadow: 0 0 6px #f8d030; } to { box-shadow: 0 0 22px #f8d030; } }
+@keyframes pkc-blink { 50% { opacity: .35; } }
+@keyframes pkc-bob { 50% { transform: translateY(2px); } }
+@keyframes pkc-nudge { 50% { transform: translateX(2px); } }
+@keyframes pkc-flash { 50% { background: #fff8d8; } }
