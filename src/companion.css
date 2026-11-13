@@ -215,6 +215,12 @@
   box-shadow: inset 0 0 0 2px #a8c0f0, 3px 3px 0 rgba(0,0,0,.3);
   font: 12px/1.4 "DotGothic16", "Press Start 2P", monospace; text-align: left;
 }
+/* Battle Tower: o jogo monta cada coluna da captura como grade de 3 linhas
+   (card | prévia de traits | botão Reroll). Abre uma 4ª linha pra caixa de dicas,
+   senão ela é desenhada por cima do botão Reroll. */
+#catch-choices:has(.poke-trait-preview):has(.pkc-advice) { grid-template-rows: auto auto auto auto; }
+#catch-choices:has(.poke-trait-preview):has(.pkc-advice) > .poke-choice-wrap { grid-row: span 4; }
+#catch-choices:has(.poke-trait-preview) .pkc-advice { grid-row: 4; margin-top: 0; align-self: start; }
 .pkc-advice .pkc-good { color: #1f7a33; } .pkc-advice .pkc-bad { color: #c0302a; }
 .pkc-advice .pkc-shiny { color: #b07800; font-family: "Press Start 2P", monospace; font-size: 8px; }
 .pkc-advice .pkc-aurora {
