@@ -562,6 +562,7 @@
             ph.className = 'pkc-tier pkc-pending';
             ph.textContent = 'Calculando nota…';
             c.appendChild(ph);
+            ensureGap(c);
           }
         }
       }
@@ -869,13 +870,48 @@
     return { enemy, enemyName: boss.name, cal, base: await simPower(s.team, enemy, passives) };
   }
 
+  const tierCls = res => 'pkc-tier-' + res.tier.replace('+', 'p');
+
+  /** Caixa compacta (tamanho fixo) que vai na base do card: nota + o essencial. */
   function tierBadge(res, isBest) {
-    const cls = 'pkc-tier-' + res.tier.replace('+', 'p');
-    return `<div class="pkc-tier ${cls}">
-      <div class="pkc-tier-top"><span class="pkc-tier-g">${res.tier}</span>${isBest ? '<span class="pkc-tier-best">MELHOR</span>' : ''}</div>
-      ${res.holder ? `<div class="pkc-tier-holder">${res.verb || 'Equipar em'} <b>${esc(res.holder.name)}</b></div>` : ''}
-      <ul>${res.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>`;
+    // na caixa compacta o motivo vai encurtado; o texto completo fica na janelinha do mouse
+    const short = w => String(w || '').replace(/ na simulação contra .*/, ' na simulação').replace(/^Quase não muda a luta contra .*/, 'Quase não muda a luta');
+    const line1 = res.holder ? `${res.verb || 'Equipar em'} <b>${esc(res.holder.name)}</b>` : esc(short(res.why[0]));
+    const line2 = res.holder ? esc(short(res.why[0])) : esc(short(res.why[1]));
+    return `<div class="pkc-tier ${tierCls(res)}">
+      <span class="pkc-tier-g">${res.tier}</span>
+      <div class="pkc-tier-txt"><div class="pkc-tier-l1">${line1}</div><div class="pkc-tier-l2">${line2}</div></div>
+      ${isBest ? '<span class="pkc-tier-best">MELHOR</span>' : ''}</div>`;
   }
+
+  /** Janelinha com todos os motivos, aberta ao passar o mouse no card. */
+  function tierDetails(res) {
+    return `<div class="pkc-pop-head"><span class="pkc-tier-g ${tierCls(res)}">${res.tier}</span>
+      ${res.holder ? `<span>${res.verb || 'Equipar em'} <b>${esc(res.holder.name)}</b></span>` : ''}</div>
+      <ul>${res.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul>`;
+  }
+
+  const popHtml = new WeakMap();
+  let pop = null;
+  function showPop(card) {
+    const html = popHtml.get(card);
+    if (!html) return;
+    if (!pop) { pop = document.createElement('div'); pop.id = 'pkc-pop'; document.body.appendChild(pop); }
+    pop.innerHTML = html;
+    pop.style.display = 'block';
+    const r = card.getBoundingClientRect();
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    let top = r.bottom + 8;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8); // sem espaço embaixo: abre em cima
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+    pop.style.top = top + 'px';
+  }
+  const hidePop = () => { if (pop) pop.style.display = 'none'; };
+  document.addEventListener('mouseover', e => {
+    const card = e.target.closest && e.target.closest('.pkc-has-tip');
+    if (card) showPop(card); else hidePop();
+  }, true);
+  document.addEventListener('pointerdown', hidePop, true);
 
   /** Todas as caixas de uma tela com a mesma altura (a da maior), pra ficarem alinhadas. */
   function equalizeHeights(boxes) {
@@ -886,6 +922,14 @@
     boxes.forEach(b => { b.style.minHeight = h + 'px'; });
   }
 
+  function ensureGap(card) {
+    // espaçador flexível: empurra a nota pra base, mas nunca deixa menos de 10px até o texto
+    let gap = card.querySelector(':scope > .pkc-gap');
+    if (!gap) { gap = document.createElement('div'); gap.className = 'pkc-gap'; }
+    const box = card.querySelector(':scope > .pkc-tier');
+    card.insertBefore(gap, box || null);
+  }
+
   function paintCards(cards, results) {
     const valid = results.filter(Boolean);
     const sorted = valid.map(r => r.score).sort((a, b) => b - a);
@@ -894,12 +938,13 @@
     cards.forEach((card, i) => {
       const r = results[i];
       let box = card.querySelector(':scope > .pkc-tier');
-      if (!r) { if (box) box.remove(); return; }
-      const html = tierBadge(r, r.score === bestScore && r.tier !== 'C');
+      if (!r) { if (box) box.remove(); card.classList.remove('pkc-has-tip'); return; }
       if (!box) { box = document.createElement('div'); card.appendChild(box); }
-      box.outerHTML = html;
+      box.outerHTML = tierBadge(r, r.score === bestScore && r.tier !== 'C');
+      ensureGap(card);
+      popHtml.set(card, tierDetails(r));
+      card.classList.add('pkc-has-tip');
     });
-    equalizeHeights(cards.map(c => c.querySelector(':scope > .pkc-tier')));
   }
 
   let relicIndex = null;
