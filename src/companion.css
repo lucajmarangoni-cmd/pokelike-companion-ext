@@ -269,3 +269,7 @@
 @keyframes pkc-spin { to { transform: rotate(360deg); } }
 /* a fonte pixel não tem ★: desenha com a fonte do sistema */
 .pkc-tier-best::before { content: "★"; margin-right: 3px; font: 11px system-ui, sans-serif; }
+
+/* notas encostadas na base do card: textos de tamanhos diferentes não desalinham as caixas */
+.item-card > .pkc-tier, .stat-buff-poke-wrap > .pkc-tier { margin-top: auto; }
+.item-card:has(> .pkc-tier) { justify-content: flex-start; }

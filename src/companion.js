@@ -501,6 +501,7 @@
     const boss = hunt.running ? null : await nextBoss();
     const simLine = i => `<span class="pkc-sim" data-i="${i}">${boss ? `vs ${esc(boss.name)}: <small class="pkc-muted">calculando…</small>` : ''}</span>`;
     boxes.forEach((box, i) => { box.innerHTML = staticLines[i].join('<br>') + (boss ? '<br>' + simLine(i) : ''); });
+    equalizeHeights(boxes);
     highlightCatchCards();
     if (!boss) { advisorKey = key; return; }
 
@@ -522,7 +523,8 @@
       const cls = d > 0.02 ? 'pkc-good' : d < -0.02 ? 'pkc-bad' : '';
       const el = boxes[i].querySelector('.pkc-sim');
       if (el) el.innerHTML = `vs ${esc(boss.name)}: <span class="${cls}">${pct(best.p)}</span> <small>(${d >= 0 ? '+' : ''}${Math.round(d * 100)} pts${esc(best.label)})</small>`;
-    }    advisorKey = key; // só marca como pronto quando terminou tudo (se cancelar no meio, refaz)
+    }
+    equalizeHeights(boxes);    advisorKey = key; // só marca como pronto quando terminou tudo (se cancelar no meio, refaz)
   }
 
   /*
@@ -875,6 +877,15 @@
       <ul>${res.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>`;
   }
 
+  /** Todas as caixas de uma tela com a mesma altura (a da maior), pra ficarem alinhadas. */
+  function equalizeHeights(boxes) {
+    boxes = boxes.filter(Boolean);
+    if (boxes.length < 2) return;
+    boxes.forEach(b => { b.style.minHeight = ''; });
+    const h = Math.max(...boxes.map(b => b.offsetHeight));
+    boxes.forEach(b => { b.style.minHeight = h + 'px'; });
+  }
+
   function paintCards(cards, results) {
     const valid = results.filter(Boolean);
     const sorted = valid.map(r => r.score).sort((a, b) => b - a);
@@ -888,6 +899,7 @@
       if (!box) { box = document.createElement('div'); card.appendChild(box); }
       box.outerHTML = html;
     });
+    equalizeHeights(cards.map(c => c.querySelector(':scope > .pkc-tier')));
   }
 
   let relicIndex = null;
