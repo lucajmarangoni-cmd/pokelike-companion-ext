@@ -285,3 +285,102 @@
 #pkc-pop .pkc-pop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 #pkc-pop ul { margin: 0; padding-left: 15px; }
 #pkc-pop li { margin: 2px 0; }
+
+/* ---------- modo compacto: barra com o essencial ---------- */
+#pkc-root.pkc-compact { width: 300px; }
+#pkc-root.pkc-compact.pkc-closed { width: auto; }
+#pkc-root .pkc-cbody { padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 5px; }
+#pkc-root .pkc-crow { display: flex; align-items: center; gap: 7px; min-height: 22px; }
+#pkc-root .pkc-clbl {
+  flex: none; width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 7px var(--pkc-pixel); color: var(--pkc-muted);
+}
+#pkc-root .pkc-cval { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+#pkc-root .pkc-crow .pkc-bar { height: 8px; }
+#pkc-root .pkc-cpct { flex: none; width: 38px; text-align: right; font: 9px var(--pkc-pixel); }
+#pkc-root .pkc-cnote { font-size: 11px; color: var(--pkc-muted); white-space: normal; }
+#pkc-root .pkc-crow.pkc-found .pkc-clbl { color: var(--pkc-red-dk); }
+#pkc-root .pkc-mini {
+  flex: none; width: 24px; height: 20px; padding: 0; cursor: pointer;
+  background: var(--pkc-red); color: #fff; border: 2px solid var(--pkc-ink); border-radius: 3px;
+  box-shadow: 2px 2px 0 rgba(0,0,0,.3); font: 9px var(--pkc-pixel);
+}
+#pkc-root .pkc-mini-stop { background: #5a5a5a; }
+#pkc-root .pkc-mini:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 rgba(0,0,0,.3); }
+#pkc-root .pkc-mode { margin-left: auto; }
+#pkc-root .pkc-mode + .pkc-x { margin-left: 4px; }
+#pkc-root.pkc-extended .pkc-tabs button { font-size: 7px; }
+
+/* ---------- coleção (aba Dex) ---------- */
+#pkc-root .pkc-dexrow { display: flex; align-items: center; gap: 7px; margin: 5px 0; }
+#pkc-root .pkc-dexrow .pkc-lbl { width: 58px; margin: 0; flex: none; }
+#pkc-root .pkc-dexrow b { flex: none; width: 56px; text-align: right; font: 8px var(--pkc-pixel); }
+#pkc-root .pkc-bar-dex > span { background: #e04038; }
+#pkc-root .pkc-bar-shiny > span { background: #f8c030; }
+#pkc-root .pkc-bar-aurora > span { background: linear-gradient(90deg, #17b8a6, #8b5cf6); }
+#pkc-root .pkc-sect { display: flex; align-items: baseline; justify-content: space-between; margin: 10px 0 4px; }
+#pkc-root .pkc-sect .pkc-lbl { margin: 0; }
+#pkc-root .pkc-dexgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+#pkc-root .pkc-dexmon {
+  position: relative; aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  background: var(--pkc-cream2); border: 1px solid #cfc9b8; border-radius: 3px;
+}
+#pkc-root .pkc-dexmon img { width: 100%; image-rendering: pixelated; }
+#pkc-root .pkc-dex-miss img { filter: grayscale(1) brightness(.5); opacity: .45; }
+#pkc-root .pkc-dex-sh::after { content: "✨"; position: absolute; right: -2px; top: -4px; font-size: 9px; }
+#pkc-root .pkc-dexhit { display: flex; gap: 6px; align-items: center; padding: 4px 6px; margin: 4px 0; background: var(--pkc-cream2); border: 2px solid var(--pkc-ink); border-radius: 4px; line-height: 1.3; }
+#pkc-root .pkc-kv { display: flex; align-items: baseline; gap: 8px; margin: 6px 0; }
+#pkc-root .pkc-kv .pkc-lbl { margin: 0; flex: none; }
+#pkc-root .pkc-statgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 6px 0; }
+#pkc-root .pkc-statgrid div { display: flex; flex-direction: column; align-items: center; padding: 4px 2px; background: var(--pkc-cream2); border: 2px solid var(--pkc-ink); border-radius: 4px; }
+#pkc-root .pkc-statgrid b { font: 9px var(--pkc-pixel); }
+#pkc-root .pkc-statgrid span { font-size: 10px; color: var(--pkc-muted); text-align: center; line-height: 1.2; }
+
+/* selos pequenos (captura) */
+.pkc-pill {
+  display: inline-block; margin-left: 3px; padding: 1px 4px; vertical-align: middle;
+  font: 6px/1.4 "Press Start 2P", monospace; color: #fff; background: #4a6cb8;
+  border: 1px solid #2a2a2a; border-radius: 2px;
+}
+.pkc-pill-sh { background: #d49a10; }
+
+/* ---------- rota sugerida no mapa (por baixo dos nós) ---------- */
+.pkc-route-next { animation: pkc-ring 1.4s ease-in-out infinite; }
+@keyframes pkc-ring { 50% { opacity: .25; } }
+
+/* ---------- faixa na tela de preparação do chefe ---------- */
+.pkc-prep {
+  width: min(460px, calc(100% - 24px)); margin: 8px auto 6px; padding: 7px 10px; text-align: left;
+  background: #fff; color: #2a2a2a; border: 3px solid #2a2a2a; border-radius: 6px;
+  box-shadow: inset 0 0 0 2px #a8c0f0, 3px 3px 0 rgba(0,0,0,.3);
+  font: 12px/1.4 "DotGothic16", "Press Start 2P", monospace; text-shadow: none;
+}
+.pkc-prep-row { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+.pkc-prep-row + .pkc-prep-row { margin-top: 3px; }
+.pkc-prep .pkc-lbl { flex: none; width: 58px; font: 7px "Press Start 2P", monospace; color: #6c6658; }
+.pkc-prep .pkc-bar { position: relative; flex: 1; height: 8px; background: #485048; border: 2px solid #2a2a2a; border-radius: 4px; overflow: hidden; }
+.pkc-prep .pkc-bar > span { display: block; height: 100%; background: #58d080; }
+.pkc-prep .pkc-bar.pkc-hp-mid > span { background: #f8c030; }
+.pkc-prep .pkc-bar.pkc-hp-lo > span { background: #f85838; }
+.pkc-prep-row > b { flex: none; width: 44px; text-align: right; font: 9px "Press Start 2P", monospace; }
+.pkc-prep .pkc-muted { color: #6c6658; }
+.pkc-prep .pkc-good { color: #1f7a33; }
+.pkc-prep-order { font-size: 11px; }
+
+/* espaçador também fora de cards flex */
+.pkc-gap { min-height: 10px; }
+
+/* ---------- selo de canto (troca com time cheio): não muda o tamanho do card ---------- */
+.poke-card.pkc-has-corner { position: relative; }
+.pkc-corner {
+  position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; align-items: center; gap: 4px;
+  padding: 2px 5px 2px 2px; pointer-events: none;
+  background: #fff; border: 2px solid #2a2a2a; border-radius: 4px; box-shadow: 2px 2px 0 rgba(0,0,0,.3);
+  font: 8px "Press Start 2P", monospace; color: #2a2a2a;
+}
+.pkc-corner .pkc-tier-g { min-width: 22px; height: 18px; font-size: 8px; box-shadow: none; border-width: 1px; }
+.pkc-corner.pkc-corner-best { outline: 2px solid #f8d030; outline-offset: 1px; }
+
+/* 5 abas numa linha só */
+#pkc-root.pkc-extended .pkc-tabs { grid-template-columns: repeat(5, 1fr); }
+#pkc-root.pkc-extended .pkc-tabs button { padding: 6px 0; letter-spacing: -.3px; }

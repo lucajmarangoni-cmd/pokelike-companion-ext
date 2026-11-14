@@ -88,6 +88,8 @@
   const SETTINGS_KEY = 'pkc:settings';
   const defaults = {
     open: true, tab: 'hunt', x: null, y: null,
+    mode: 'compact',          // compact (barra com o essencial) | extended (abas completas)
+    routeAdvisor: true,       // trilha sugerida no mapa
     huntTarget: 'shiny',      // shiny | aurora | species
     huntSpecies: '',          // lista separada por vírgula
     huntSpeciesNeedShiny: true,
@@ -193,8 +195,75 @@
   function bossKey() {
     const s = S(); const es = ES();
     if (!s) return null;
-    return [s.runSeed, s.currentMap, s.isEndlessMode ? 1 : 0, s.gen2Mode, s.gen3Mode, s.gen4Mode, s.gen5Mode, s.gen6Mode,
+    return [s.runSeed, s.currentMap, s.eliteIndex || 0, s.isEndlessMode ? 1 : 0, s.gen2Mode, s.gen3Mode, s.gen4Mode, s.gen5Mode, s.gen6Mode,
       es && es.regionNumber, es && es.mapIndexInRegion].join('|');
+  }
+
+  /**
+   * Membros restantes da Elite Four (a partir do atual), montados como o jogo monta:
+   * mesmos níveis, golpes no nível máximo e itens do ás. Só cria instâncias (sem RNG).
+   */
+  async function eliteMembers() {
+    const s = S();
+    let list = null;
+    try {
+      list = s.gen6Mode ? KALOS_ELITE_4 : s.gen5Mode ? UNOVA_ELITE_4 : s.gen4Mode ? SINNOH_ELITE_4
+        : s.gen3Mode ? HOENN_ELITE_4 : s.gen2Mode ? GEN2_ELITE_4 : ELITE_4;
+    } catch { return []; }
+    if (!Array.isArray(list)) return [];
+    const mult = s.challengeLevelMult || 1;
+    let uid; try { uid = _pokeUidCounter; } catch { uid = undefined; }
+    try {
+      const out = [];
+      for (let i = s.eliteIndex || 0; i < list.length; i++) {
+        const m = list[i];
+        let base = await window.resolveTrainerTeamEvolutions(m.team);
+        if (fn('gen1AceOnlyHeldItems')) base = window.gen1AceOnlyHeldItems(base);
+        const lvl = x => (fn('slEnemyLevel') ? window.slEnemyLevel(Math.max(1, Math.round(x.level * mult))) : x.level);
+        const team = base.map(x => (s.gen6Mode && fn('kalosBuildEnemy'))
+          ? window.kalosBuildEnemy(x, lvl(x), 2)
+          : { ...window.createInstance(x, lvl(x), false, 2), heldItem: x.heldItem || null, ...(x.hiddenAbility ? { _hiddenAbility: true } : {}) });
+        out.push({ name: m.name, team });
+      }
+      return out;
+    } finally {
+      try { if (uid !== undefined) _pokeUidCounter = uid; } catch { /* ignore */ }
+    }
+  }
+
+  /** "vence tudo: 12%" ou, se for baixo, até onde costuma chegar. */
+  function gauntletText(g, members) {
+    if (g.all >= 0.1) return `vence todos em sequência: <b>${pct(g.all)}</b>`;
+    // primeiro membro em que a chance de passar cai abaixo de 50%
+    const k = g.perMember.findIndex(p => p < 0.5);
+    const who = members[Math.max(0, k)] ? members[Math.max(0, k)].name : 'o fim';
+    return `vence todos: <b>${pct(g.all)}</b> · costuma parar em <b>${esc(who)}</b>`;
+  }
+
+  /** Liga inteira em sequência: o HP NÃO recupera entre os membros. */
+  async function simGauntlet(team, members, n, job) {
+    const s = S();
+    const reach = members.map(() => 0);
+    let all = 0;
+    for (let i = 0; i < n; i++) {
+      const won = guarded(() => {
+        window.seedRng((Math.random() * 4294967296) >>> 0);
+        let pt = clone(team);
+        for (let k = 0; k < members.length; k++) {
+          const cur = clone(pt);
+          try { if (fn('applyMegaEvolution')) cur.forEach(window.applyMegaEvolution); } catch { /* ignore */ }
+          const res = window.runBattle(cur, clone(members[k].team), s.items || [], [], null, battleConfig(cur), s.passives || []);
+          if (!res || !res.playerWon) return k;
+          reach[k]++;
+          // leva o HP de cada um pra próxima luta
+          pt = pt.map((mon, j) => ({ ...mon, currentHp: Math.max(0, ((res.pTeam || [])[j] || mon).currentHp) }));
+        }
+        return members.length;
+      });
+      if (won === members.length) all++;
+      await breathe(job);
+    }
+    return { all: all / n, perMember: reach.map(r => r / n), n };
   }
 
   /** Time do próximo chefe (líder de ginásio / treinador do Battle Tower). */
@@ -205,7 +274,10 @@
     const s = S();
     let data = null;
     try {
-      if (!s.isEndlessMode && fn('campaignGymTeam') && s.currentMap < 8) {
+      if (!s.isEndlessMode && s.currentMap >= 8) {
+        const members = await eliteMembers();
+        if (members.length) data = { name: members[0].name, team: members[0].team, approx: false, elite: members };
+      } else if (!s.isEndlessMode && fn('campaignGymTeam') && s.currentMap < 8) {
         // campaignGymTeam não usa RNG; só cria instâncias (contador de IDs), que restauramos.
         let uid; try { uid = _pokeUidCounter; } catch { uid = undefined; }
         let r;
@@ -248,17 +320,17 @@
   const orderScore = (r, n) => r.p + 0.05 * (r.avgSurvivors / Math.max(1, n)) * r.p;
 
   let orderJob = null;
-  async function bestOrder(team, enemy, onProgress) {
+  async function bestOrder(team, enemy, onProgress, outerJob = null) {
     const job = {}; orderJob = job;
     const idx = team.map((_, i) => i);
     const all = [...permutations(idx)];
-    const quick = all.length > 120 ? 24 : 60;
+    const quick = all.length > 120 ? 12 : all.length > 24 ? 30 : 60;
     const scored = [];
     let t = performance.now();
     for (let k = 0; k < all.length; k++) {
       if (orderJob !== job) return null;
       const order = all[k];
-      const r = await winRate(order.map(i => team[i]), enemy, quick);
+      const r = await winRate(order.map(i => team[i]), enemy, quick, outerJob);
       scored.push({ order, p: r.p, alive: r.avgSurvivors, score: orderScore(r, team.length) });
       if (performance.now() - t > 25) { onProgress && onProgress(k / all.length * 0.6); await sleep(0); t = performance.now(); }
     }
@@ -268,7 +340,7 @@
     if (!top.some(x => x.order.every((v, i) => v === i))) top.push({ order: idx, p: 0, alive: 0, score: 0 });
     for (let k = 0; k < top.length; k++) {
       if (orderJob !== job) return null;
-      const r = await winRate(top[k].order.map(i => team[i]), enemy, Math.max(300, cfg.sims));
+      const r = await winRate(top[k].order.map(i => team[i]), enemy, 200, outerJob);
       Object.assign(top[k], { p: r.p, alive: r.avgSurvivors, score: orderScore(r, team.length) });
       onProgress && onProgress(0.6 + 0.4 * (k + 1) / top.length);
       await sleep(0);
@@ -299,6 +371,11 @@
   function isHit(inst) {
     if (!inst) return false;
     if (cfg.huntTarget === 'aurora') return !!inst.isAurora;
+    if (cfg.huntTarget === 'newshiny') {
+      const d = dexes();
+      if (inst.isAurora) return !inDex(d.aurora, inst.speciesId) || !inDex(d.shiny, inst.speciesId);
+      return !!inst.isShiny && !inDex(d.shiny, inst.speciesId);
+    }
     if (cfg.huntTarget === 'species') {
       const list = speciesList();
       const name = String(inst.name || '').toLowerCase();
@@ -471,12 +548,20 @@
     const room = team.length < 6; // o jogo aceita até 6; com time cheio ele pede pra trocar
 
     // 1) tudo que é instantâneo (tipos, cobertura, traits) aparece na hora
+    // "NOVO NA DEX" só quando diferencia as opções (se todas são novas, não ajuda a escolher)
+    const dx = dexes();
+    const newOnes = inst.filter(c => !inDex(dx.dex, c.speciesId)).length;
+    const showNew = newOnes > 0 && newOnes < inst.length;
     const staticLines = inst.map(cand => {
       const lines = [];
       if (cand.isAurora) lines.push('<b class="pkc-aurora">🌈 AURORA</b>');
       else if (cand.isShiny) lines.push('<b class="pkc-shiny">✨ SHINY</b>');
       const mt = moveType(cand);
-      lines.push(`Ataca com <span class="pkc-t pkc-t-${mt.toLowerCase()}">${esc(tType(mt))}</span>`);
+      const d = dexes();
+      const tags = [];
+      if ((cand.isShiny || cand.isAurora) && !inDex(d.shiny, cand.speciesId)) tags.push('<span class="pkc-pill pkc-pill-sh">SHINY NOVO</span>');
+      else if (showNew && !inDex(d.dex, cand.speciesId)) tags.push('<span class="pkc-pill">NOVO NA DEX</span>');
+      lines.push(`Ataca com <span class="pkc-t pkc-t-${mt.toLowerCase()}">${esc(tType(mt))}</span> ${tags.join('')}`);
       const newHits = TYPES().filter(d => eff(mt, [d]) >= 2 && beforeOff.find(o => o.type === d).best < 2);
       if (newHits.length) lines.push('Nova cobertura: ' + newHits.map(t => esc(tType(t))).join(', '));
       // defesa: ele cobre ou piora as maiores fraquezas do time?
@@ -978,7 +1063,7 @@
     if (!s || !s.team || !s.team.length) return;
     const scr = screenId();
     if (scr !== 'item-screen' && scr !== 'passive-screen' && scr !== 'stat-buff-screen') return;
-    if (!ui.boss) ui.boss = await nextBoss();
+    ui.boss = await nextBoss(); // sempre o chefe atual (resposta guardada por posição na run)
     const teamSig = s.team.map(m => `${m._uid}:${m.level}:${m.currentHp}:${m.heldItem ? m.heldItem.id : ''}`).join(',') + '|' + (s.passives || []).map(p => p.id).join(',');
 
     if (scr === 'item-screen') {
@@ -992,6 +1077,7 @@
       const results = [];
       for (const id of ids) { const it = itemById(id); results.push(it ? await evaluateItem(it, ctx) : null); }
       paintCards(cards, results);
+      ui.lastHolders = ids.map((id, i) => { const it = itemById(id); const r = results[i]; return it && r && r.holder ? { itemName: itemNameOf(it), uid: r.holder._uid, tier: r.tier } : null; }).filter(Boolean);
       choiceKey = key;
     } else if (scr === 'passive-screen') {
       const box = document.getElementById('passive-choices');
@@ -1120,8 +1206,369 @@
     ctx: async () => { const c = await advisorCtx(); return { cal: c.cal, base: c.base, enemy: c.enemy && c.enemy.map(e => e.name + ' Lv' + e.level) }; },
     relic: async id => evaluateRelic(PASSIVE_ITEM_POOL.find(p => p.id === id), await advisorCtx()),
     item: async id => evaluateItem(itemById(id), await advisorCtx()),
+    jobs: () => ({ advisorBusy, advKey: advJob && advJob.key, advCancelled: advJob && advJob.cancelled, prepKey, screen: screenId() }),
     buffs: async () => (await buffTable('debug-' + Date.now())).map(r => ({ mon: r.mon.name, best: r.best && r.best.label, stats: r.stats.map(x => x.label + ':' + (x.res ? x.res.tier + ' ' + x.res.score.toFixed(1) : '-')).join(' ') })),
   };
+
+  // ------------------------------------------------------ decisões da run ---
+
+  // ---- rota no mapa: soma o valor de cada nó no caminho até o chefe
+  const NODE_LABEL = {
+    catch: 'Captura', battle: 'Selvagem', trainer: 'Treinador', item: 'Item', pokecenter: 'Centro', question: '?',
+    legendary: 'Lendário', move_tutor: 'Tutor', trade: 'Troca', pokemart: 'Loja', boss: 'Chefe', moonstone: 'Pedra',
+    levelup: 'Nível+', mutation: 'Mutante', evilteam: 'Vilões', silver: 'Rival', rival_n: 'Rival', masterball: 'Master Ball',
+    magma: 'Vilões', aqua: 'Vilões', reward: 'Prêmio', underground: 'Subsolo', distortion: 'Distorção',
+  };
+  function nodeValue(n, ctx) {
+    switch (n.type) {
+      case 'catch': return ctx.room ? (ctx.size <= 2 ? 8 : 6) : 2;
+      case 'pokecenter': return 1 + ctx.missing * 14 + (ctx.fainted ? 5 : 0);
+      case 'item': return 4;
+      case 'legendary': return 9;
+      case 'masterball': return 7;
+      case 'levelup': return 5;
+      case 'moonstone': return ctx.canEvolve ? 4 : 0.5;
+      case 'move_tutor': return ctx.canTutor ? 3.5 : 0.5;
+      case 'question': return 3.5;
+      case 'trainer': case 'evilteam': case 'magma': case 'aqua': case 'silver': case 'rival_n':
+        return ctx.missing > 0.5 ? 1 : 3;
+      case 'battle': return ctx.missing > 0.5 ? 0.5 : 2;
+      case 'trade': return 2;
+      case 'mutation': return 3;
+      case 'pokemart': return 1;
+      default: return 2;
+    }
+  }
+
+  function planRoute() {
+    const s = S();
+    if (!s || !s.map || !s.map.nodes || !s.team || !s.team.length) return null;
+    const nodes = s.map.nodes, out = {};
+    for (const e of s.map.edges || []) (out[e.from] = out[e.from] || []).push(e.to);
+    const maxHp = s.team.reduce((a, m) => a + (m.maxHp || 0), 0) || 1;
+    const curHp = s.team.reduce((a, m) => a + Math.max(0, m.currentHp || 0), 0);
+    const ctx = {
+      size: s.team.length, room: s.team.length < 6, missing: 1 - curHp / maxHp,
+      fainted: s.team.some(m => m.currentHp <= 0),
+      canEvolve: s.team.some(m => { try { return window.canEverEvolve(m); } catch { return false; } }),
+      canTutor: s.team.some(m => (m.moveTier != null ? m.moveTier : 1) < 2),
+    };
+    const memo = {};
+    const best = id => {
+      if (memo[id]) return memo[id];
+      const n = nodes[id];
+      const kids = (out[id] || []).filter(k => nodes[k]);
+      let tail = { v: 0, path: [] };
+      for (const k of kids) { const r = best(k); if (r.v > tail.v || !tail.path.length) tail = r; }
+      return (memo[id] = { v: (n && n.type !== 'boss' ? nodeValue(n, ctx) : 0) + tail.v, path: [id, ...tail.path] });
+    };
+    const starts = window.getAccessibleNodes(s.map);
+    if (!starts.length) return null;
+    let pick = null;
+    for (const n of starts) { const r = best(n.id); if (!pick || r.v > pick.v) pick = r; }
+    const types = pick.path.map(id => nodes[id].type);
+    const labels = types.map(t => NODE_LABEL[t] || t);
+    let why = 'Soma o valor dos nós até o chefe: captura vale mais com espaço no time, centro vale mais com HP baixo.';
+    if (types.includes('pokecenter') && ctx.missing > 0.3) why = `Passa no Centro: o time está com ${Math.round((1 - ctx.missing) * 100)}% do HP.`;
+    else if (types[0] === 'catch' && ctx.room) why = 'Começa capturando: ainda tem espaço no time.';
+    const from = s.currentNode && nodes[s.currentNode.id] && nodes[s.currentNode.id].visited ? s.currentNode.id
+      : (Object.values(nodes).find(n => n.type === 'start') || {}).id;
+    return { path: pick.path, from, labels: labels.length > 6 ? [...labels.slice(0, 5), '…', labels[labels.length - 1]] : labels, why };
+  }
+
+  function drawRoute(route) {
+    const svg = document.querySelector('#map-screen svg');
+    if (!svg) return;
+    const old = svg.querySelector('.pkc-route');
+    if (old) old.remove();
+    if (!route || !cfg.routeAdvisor) return;
+    // os nós ficam num subgrupo do SVG: desenha nesse mesmo grupo, nas coordenadas dele
+    const firstNode = svg.querySelector('g.map-node');
+    const layer = firstNode ? firstNode.parentNode : svg;
+    const ctm = layer.getScreenCTM && layer.getScreenCTM();
+    if (!ctm) return;
+    const im = ctm.inverse();
+    const center = id => {
+      const g = svg.querySelector(`g.map-node[data-node-id="${id}"]`);
+      if (!g) return null;
+      const r = g.getBoundingClientRect();
+      const pt = svg.createSVGPoint(); pt.x = r.left + r.width / 2; pt.y = r.top + r.height / 2;
+      return pt.matrixTransform(im);
+    };
+    const ids = (route.from ? [route.from] : []).concat(route.path);
+    const pts = ids.map(center).filter(Boolean);
+    if (pts.length < 2) return;
+    const ns = 'http://www.w3.org/2000/svg';
+    const grp = document.createElementNS(ns, 'g');
+    grp.setAttribute('class', 'pkc-route');
+    grp.setAttribute('pointer-events', 'none');
+    const line = document.createElementNS(ns, 'polyline');
+    line.setAttribute('points', pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '));
+    line.setAttribute('class', 'pkc-route-line');
+    for (const [k, v] of Object.entries({ fill: 'none', stroke: '#f8d030', 'stroke-width': '7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-dasharray': '1 12', opacity: '0.95' })) line.setAttribute(k, v);
+    grp.appendChild(line);
+    const nextPt = pts[route.from ? 1 : 0];
+    const ring = document.createElementNS(ns, 'circle');
+    ring.setAttribute('cx', nextPt.x.toFixed(1)); ring.setAttribute('cy', nextPt.y.toFixed(1)); ring.setAttribute('r', '24');
+    ring.setAttribute('class', 'pkc-route-next');
+    for (const [k, v] of Object.entries({ fill: 'none', stroke: '#f8d030', 'stroke-width': '3' })) ring.setAttribute(k, v);
+    grp.appendChild(ring);
+    layer.insertBefore(grp, firstNode || null); // por baixo dos nós, por cima das linhas do jogo
+  }
+
+  let routeKey = null;
+  function routeAdvisor() {
+    const s = S();
+    if (!cfg.routeAdvisor || hunt.running || blocked() || screenId() !== 'map-screen' || !s || !s.map) return;
+    const key = bossKey() + '|' + Object.values(s.map.nodes).filter(n => n.visited).length + '|' + s.team.map(m => `${m._uid}:${m.currentHp}`).join(',');
+    const svg = document.querySelector('#map-screen svg');
+    if (key !== routeKey) { routeKey = key; ui.route = planRoute(); if (compact()) renderBody(); }
+    if (svg && !svg.querySelector('.pkc-route')) drawRoute(ui.route);
+  }
+
+  // ---- tela de preparação do chefe (antes de ginásios e de cada membro da Elite Four)
+  let prepKey = null;
+  async function prepAdvisor() {
+    if (!cfg.choiceAdvisor || blocked()) return;
+    const s = S();
+    const sub = document.getElementById('elite-prep-sub');
+    if (!sub || !s.team.length) return;
+    ui.boss = await nextBoss(); // sempre o chefe atual (resposta guardada por posição na run)
+    const boss = ui.boss;
+    if (!boss) return;
+    const key = bossKey() + '|' + s.team.map(m => `${m._uid}:${m.currentHp}`).join(',');
+    let box = document.getElementById('pkc-prep');
+    if (key === prepKey && box) return;
+    const job = advJob = { key, cancelled: false };
+    if (!box) { box = document.createElement('div'); box.id = 'pkc-prep'; sub.insertAdjacentElement('afterend', box); }
+    box.className = 'pkc-prep';
+    const paint = (w, g, order) => {
+      const cls = !w ? '' : w.p >= 0.5 ? 'pkc-hp-hi' : w.p >= 0.2 ? 'pkc-hp-mid' : 'pkc-hp-lo';
+      let orderTxt = '<span class="pkc-muted">Ordem sugerida: calculando…</span>';
+      if (order) {
+        const same = order.best.order.every((v, i) => v === i) || (order.current && order.best.score - order.current.score < 0.02);
+        orderTxt = same ? '<span class="pkc-good">Sua ordem já é a melhor.</span>'
+          : `Ordem sugerida: <b>${order.best.order.map(i => esc(s.team[i].name)).join(' › ')}</b> <small>(${pct(order.best.p)} contra ${pct(order.current && order.current.p)})</small>`;
+      }
+      box.innerHTML = `<div class="pkc-prep-row"><span class="pkc-lbl">CHANCE</span>
+          <div class="pkc-bar ${cls}"><span style="width:${w ? Math.round(w.p * 100) : 0}%"></span></div><b>${w ? pct(w.p) : '…'}</b></div>
+        ${boss.elite && boss.elite.length > 1 ? `<div class="pkc-prep-row" title="Sem recuperar HP entre as lutas"><span class="pkc-lbl">LIGA</span><span>${g ? gauntletText(g, boss.elite) : 'calculando…'}</span></div>` : ''}
+        <div class="pkc-prep-row pkc-prep-order">${orderTxt}</div>`;
+    };
+    paint(null, null, null);
+    const w = await winRate(s.team, boss.team, 200, job);
+    paint(w, null, null);
+    const g = boss.elite && boss.elite.length > 1 ? await simGauntlet(s.team, boss.elite, 120, job) : null;
+    paint(w, g, null);
+    const order = s.team.length > 1 ? await bestOrder(s.team.slice(), boss.team, null, job) : null;
+    if (job.cancelled) return;
+    paint(w, g, order || { best: { order: s.team.map((_, i) => i), score: 0, p: w.p }, current: { score: 0, p: w.p } });
+    prepKey = key;
+  }
+
+  // ---- troca com time cheio: qual soltar?
+  let swapKey = null;
+  async function swapAdvisor() {
+    if (!cfg.choiceAdvisor || blocked()) return;
+    const s = S();
+    const choices = document.getElementById('swap-choices');
+    if (!choices || s.team.length < 6) return;
+    const cards = [...choices.children].filter(c => c.matches('.poke-card') || c.querySelector('.poke-card'));
+    if (cards.length !== s.team.length) return;
+    const incoming = s.savedCatch && s.savedCatch.pendingSwap || null;
+    const inName = (document.querySelector('#swap-incoming .poke-name') || {}).textContent || '';
+    const cand = incoming || findIncoming(inName);
+    if (!cand) return;
+    const key = 'swap|' + cand.name + '|' + s.team.map(m => m._uid).join(',');
+    if (key === swapKey && choices.querySelector('.pkc-corner')) return;
+    advJob = { key, cancelled: false };
+    ui.boss = await nextBoss(); // sempre o chefe atual (resposta guardada por posição na run)
+    const ctx = await advisorCtx();
+    const results = [];
+    for (let j = 0; j < s.team.length; j++) {
+      const m = s.team[j];
+      const why = [];
+      let simPts = null;
+      if (ctx.enemy) {
+        const t2 = s.team.slice(); t2[j] = cand;
+        simPts = ((await simPower(t2, ctx.enemy, s.passives || [])).power - ctx.base.power) * SIM_WEIGHT;
+      }
+      if (m.isShiny || m.isAurora) why.push(`${m.name} é ${m.isAurora ? 'aurora' : 'shiny'}${traitsMatter() ? ' (vale mais nos traits)' : ''}`);
+      if (j === 0) why.push(`${m.name} vai na frente`);
+      const res = finish(m.isShiny || m.isAurora ? -2 : 0, simPts, why, null, ctx);
+      if (res.why[0]) res.why[0] = res.why[0].replace(/^([+-]?\d+) pts na simulação/, `Trocar por ${cand.name}: $1 pts`).replace(/^Quase não muda a luta/, `Trocar por ${cand.name} quase não muda a luta`);
+      results.push(res);
+    }
+    if (results.every(r => r.score < 1)) results.forEach(r => r.why.push('Talvez valha não trocar (pular)'));
+    paintCorners(cards, results);
+    swapKey = key;
+  }
+  /** Selo no canto do card: nota + pontos, sem mudar o tamanho do card. Detalhes no mouse. */
+  function paintCorners(cards, results) {
+    const sc = results.filter(Boolean).map(r => r.score).sort((a, b) => b - a);
+    const bestScore = sc.length > 1 && sc[0] - sc[1] >= 1 && sc[0] >= 1 ? sc[0] : null;
+    cards.forEach((c, i) => {
+      const card = c.matches('.poke-card') ? c : c.querySelector('.poke-card');
+      const r = results[i];
+      if (!card) return;
+      const old = card.querySelector(':scope > .pkc-corner');
+      if (old) old.remove();
+      if (!r) return;
+      const pts = (r.why[0] || '').match(/([+-]?\d+) pts/);
+      const el = document.createElement('div');
+      el.className = 'pkc-corner ' + tierCls(r) + (r.score === bestScore ? ' pkc-corner-best' : '');
+      el.innerHTML = `<span class="pkc-tier-g">${r.tier}</span>${pts ? (Number(pts[1]) > 0 ? '+' : '') + Number(pts[1]) : '±0'}`;
+      card.classList.add('pkc-has-corner', 'pkc-has-tip');
+      card.appendChild(el);
+      popHtml.set(card, tierDetails(r));
+    });
+  }
+
+  function findIncoming(name) {
+    const s = S();
+    const inst = s.savedCatch && Array.isArray(s.savedCatch.instances) ? s.savedCatch.instances : [];
+    return inst.find(i => i.name === name.trim()) || null;
+  }
+
+  // ---- Move Tutor: em quem vale subir o golpe
+  let tutorKey = null;
+  async function tutorAdvisor() {
+    if (!cfg.choiceAdvisor || blocked()) return;
+    const s = S();
+    const modal = document.getElementById('item-equip-modal');
+    if (!modal || !modal.querySelector('button[data-tutor]')) return;
+    const rows = [...modal.querySelectorAll('.equip-pokemon-row')];
+    if (rows.length !== s.team.length) return;
+    const key = 'tutor|' + s.team.map(m => `${m._uid}:${m.moveTier}`).join(',');
+    if (key === tutorKey && modal.querySelector('.pkc-chip')) return;
+    advJob = { key, cancelled: false };
+    ui.boss = await nextBoss(); // sempre o chefe atual (resposta guardada por posição na run)
+    const ctx = await advisorCtx();
+    const scored = [];
+    for (let i = 0; i < s.team.length; i++) {
+      const m = s.team[i];
+      if (!rows[i].querySelector('button[data-tutor]') || !ctx.enemy) { scored.push(null); continue; }
+      const t2 = s.team.slice(); t2[i] = { ...clone(m), moveTier: Math.min(2, (m.moveTier != null ? m.moveTier : 1) + 1) };
+      const pts = ((await simPower(t2, ctx.enemy, s.passives || [])).power - ctx.base.power) * SIM_WEIGHT;
+      scored.push(finish(0, pts, [], null, ctx));
+    }
+    paintChips(rows, scored);
+    tutorKey = key;
+  }
+
+  /** Selo de nota no fim de cada linha de uma lista (atributos, tutor, equipar). */
+  function paintChips(rows, results) {
+    const sc = results.filter(Boolean).map(r => r.score).sort((a, b) => b - a);
+    const bestScore = sc.length > 1 && sc[0] - sc[1] >= 0.5 ? sc[0] : null;
+    rows.forEach((row, i) => {
+      const r = results[i];
+      const old = row.querySelector('.pkc-chip');
+      if (old) old.remove();
+      if (!r) return;
+      const chip = document.createElement('span');
+      chip.className = 'pkc-chip pkc-tier-' + r.tier.replace('+', 'p') + (r.score === bestScore ? ' pkc-chip-best' : '');
+      chip.textContent = r.tier;
+      chip.title = r.why.join(' · ');
+      row.appendChild(chip);
+    });
+  }
+
+  // ---- ao equipar um item: marca quem a nota sugeriu
+  function equipHint() {
+    const modal = document.getElementById('item-equip-modal');
+    if (!modal || modal.querySelector('button[data-tutor]') || modal.querySelector('.pkc-chip') || !ui.lastHolders) return;
+    const header = (modal.querySelector('.equip-item-header') || {}).textContent || '';
+    const hit = ui.lastHolders.find(h => h.itemName && header.includes(h.itemName));
+    if (!hit) return;
+    const s = S();
+    const idx = s.team.findIndex(m => m._uid === hit.uid);
+    const rows = [...modal.querySelectorAll('.equip-pokemon-row')];
+    if (idx < 0 || !rows[idx]) return;
+    const chip = document.createElement('span');
+    chip.className = 'pkc-chip pkc-chip-best pkc-tier-' + hit.tier.replace('+', 'p');
+    chip.textContent = '★';
+    chip.title = 'Sugerido pela nota do item';
+    rows[idx].appendChild(chip);
+  }
+
+  // ------------------------------------------------------------- coleção ---
+  const REGIONS = [
+    ['Kanto', 1, 151], ['Johto', 152, 251], ['Hoenn', 252, 386],
+    ['Sinnoh', 387, 493], ['Unova', 494, 649], ['Kalos', 650, 721],
+  ];
+  const readDex = name => { try { return (fn(name) && window[name]()) || {}; } catch { return {}; } };
+  const speciesName = id => { try { return window.getSpeciesName(id); } catch { return '#' + id; } };
+  const spriteOf = id => `img/sprites/pokemon/${id}.png`;
+
+  /** Lê as três Dex uma vez por segundo no máximo (elas vivem no localStorage). */
+  let dexCache = { t: 0, dex: {}, shiny: {}, aurora: {} };
+  function dexes() {
+    if (Date.now() - dexCache.t > 1000) dexCache = { t: Date.now(), dex: readDex('getPokedex'), shiny: readDex('getShinyDex'), aurora: readDex('getAuroraDex') };
+    return dexCache;
+  }
+  const inDex = (d, id) => d[id] === 1 || d[String(id)] === 1;
+
+  function currentRegionIdx() {
+    const s = S();
+    if (!s) return 0;
+    if (s.gen6Mode) return 5; if (s.gen5Mode) return 4; if (s.gen4Mode) return 3; if (s.gen3Mode) return 2; if (s.gen2Mode) return 1;
+    return 0;
+  }
+
+  /** Espécies que podem aparecer na captura do mapa atual (mesma tabela que o jogo usa). */
+  let poolCache = { key: null, ids: [] };
+  function mapPoolIds() {
+    const s = S();
+    if (!s || !s.map || !s.starterSpeciesId) return [];
+    const key = bossKey();
+    if (poolCache.key === key) return poolCache.ids;
+    let ids = [];
+    try {
+      const idx = window.getEncounterMapIndex();
+      const g = fn('handPlacedEncounterGen') ? window.handPlacedEncounterGen() : 0;
+      let pool;
+      if (g && fn('gen' + g + 'EncounterPool')) pool = window['gen' + g + 'EncounterPool'](idx);
+      else {
+        const ranges = s.gen5Mode ? GEN5_MAP_BST_RANGES : s.gen4Mode ? GEN4_MAP_BST_RANGES : s.gen3Mode ? GEN3_MAP_BST_RANGES : s.gen2Mode ? GEN2_MAP_BST_RANGES : MAP_BST_RANGES;
+        pool = window.getBstBucket(ranges[Math.min(idx, ranges.length - 1)].min, s.isEndlessMode ? 'endless' : s.gen2Mode ? 'gen2' : 'none');
+      }
+      const { minGenId, maxGenId } = window.getCatchGenRange();
+      const legends = typeof LEGENDARY_IDS !== 'undefined' ? new Set(LEGENDARY_IDS) : new Set();
+      ids = [...new Set(pool || [])].filter(id => id >= minGenId && id <= maxGenId && !legends.has(id)).sort((a, b) => a - b);
+    } catch { ids = []; }
+    poolCache = { key, ids };
+    return ids;
+  }
+
+  let nameIndex = null;
+  function searchSpecies(q) {
+    q = String(q || '').trim().toLowerCase();
+    if (q.length < 2) return [];
+    if (!nameIndex) { nameIndex = []; for (let id = 1; id <= 721; id++) nameIndex.push([id, speciesName(id).toLowerCase()]); }
+    return nameIndex.filter(([, n]) => n.startsWith(q)).concat(nameIndex.filter(([, n]) => !n.startsWith(q) && n.includes(q))).slice(0, 4).map(([id]) => id);
+  }
+
+  function whereToFind(id) {
+    let maps = [], tower = [];
+    try {
+      const entry = fn('getStaticPokedexEntry') ? window.getStaticPokedexEntry(id) : null;
+      maps = (window.getPokemonLocations(id, entry && entry.bst) || {}).regularMaps || [];
+    } catch { /* ignore */ }
+    try { tower = (window.getBattleTowerLocations(id) || []).map(x => x.label); } catch { /* ignore */ }
+    return { maps, tower };
+  }
+
+  function huntStats() {
+    if (!huntLog.length) return null;
+    const r = huntLog.map(h => h.attempts);
+    return {
+      n: huntLog.length,
+      aurora: huntLog.filter(h => h.kind === 'AURORA').length,
+      avg: Math.round(r.reduce((a, b) => a + b, 0) / r.length),
+      best: Math.min(...r), worst: Math.max(...r),
+      mins: Math.round(huntLog.reduce((a, h) => a + (h.secs || 0), 0) / 60),
+    };
+  }
 
   // -------------------------------------------------------------------- UI ---
   let root = null;
@@ -1151,6 +1598,7 @@
       render();
     }
     else if (act === 'tab') { cfg.tab = el.dataset.tab; saveCfg(); render(); refreshTab(true); }
+    else if (act === 'mode') { cfg.mode = compact() ? 'extended' : 'compact'; saveCfg(); render(); refreshTab(false); }
     else if (act === 'hunt-start') startHunt();
     else if (act === 'hunt-stop') stopHunt('Caça parada.');
     else if (act === 'notif') { try { Notification.requestPermission().then(render); } catch { /* ignore */ } }
@@ -1163,12 +1611,29 @@
     const el = e.target;
     if (!el.dataset || !el.dataset.cfg) {
       if (el.dataset && el.dataset.def) { ui[el.dataset.def] = el.value; renderBody(); }
+      if (el.dataset && el.dataset.ui) {
+        ui[el.dataset.ui] = el.dataset.ui === 'dexRegion' ? Number(el.value) : el.value;
+        if (el.dataset.ui === 'dexQuery') debounceRender(); else renderBody();
+      }
       return;
     }
     const k = el.dataset.cfg;
     cfg[k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value;
     saveCfg();
     if (e.type === 'change' && el.tagName === 'SELECT') render();
+  }
+
+  // re-render da busca sem perder o foco do campo de texto
+  let qTimer = null;
+  function debounceRender() {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => {
+      const inp = root.querySelector('[data-ui="dexQuery"]');
+      const pos = inp ? inp.selectionStart : null;
+      renderBody();
+      const again = root.querySelector('[data-ui="dexQuery"]');
+      if (again) { again.focus(); if (pos != null) again.setSelectionRange(pos, pos); }
+    }, 180);
   }
 
   let drag = null;
@@ -1203,32 +1668,86 @@
     return !onMenuScreen() || forcedOpenOn === screenId();
   }
 
+  const compact = () => cfg.mode !== 'extended';
+
   function render() {
     if (!root) return;
-    const tabs = [['hunt', 'Caça'], ['fight', 'Luta'], ['team', 'Time'], ['types', 'Tipos']];
+    const tabs = [['hunt', 'Caça'], ['fight', 'Luta'], ['team', 'Time'], ['dex', 'Dex'], ['types', 'Tipos']];
     const open = isOpen();
-    root.className = open ? 'pkc-open' : 'pkc-closed';
+    root.className = (open ? 'pkc-open' : 'pkc-closed') + (compact() ? ' pkc-compact' : ' pkc-extended');
     root.innerHTML = `
       <div class="pkc-head">
         <span class="pkc-ball" aria-hidden="true"><img src="img/sprites/items/ultra-ball.png" alt="" onerror="this.remove()"></span>
         <span class="pkc-title">COMPANION</span>
         ${hunt.running ? '<span class="pkc-live">CAÇANDO</span>' : ''}
+        ${open ? `<button class="pkc-x pkc-mode" data-act="mode" title="${compact() ? 'Modo estendido: todas as ferramentas' : 'Modo compacto: só o essencial'}">${compact() ? '⤢' : '⤡'}</button>` : ''}
         <button class="pkc-x" data-act="toggle" title="Abrir/fechar">${open ? '–' : '+'}</button>
       </div>
-      ${open ? `
+      ${open ? (compact() ? '<div class="pkc-body pkc-cbody"></div>' : `
       <div class="pkc-tabs">${tabs.map(([id, l]) => `<button data-act="tab" data-tab="${id}" class="${cfg.tab === id ? 'on' : ''}"><span class="pkc-cur">▶</span>${l}</button>`).join('')}</div>
-      <div class="pkc-body"></div>` : ''}`;
+      <div class="pkc-body"></div>`) : ''}`;
     renderBody();
+  }
+
+  /*
+   * Modo compacto: no máximo 3 linhas, só o que importa na tela atual.
+   * Caça (sempre), chefe (quando há run) e rota (no mapa).
+   */
+  function compactView() {
+    const s = S();
+    const b = blocked();
+    if (b) return `<div class="pkc-crow pkc-muted">${esc(b.split(':')[0])}: desligado</div>`;
+    const rows = [];
+    // caça
+    if (hunt.running) {
+      const { p, aur } = shinyOdds();
+      const k = s && s.nuzlockeMode ? 1 : 3;
+      const per = 1 - Math.pow(1 - (cfg.huntTarget === 'aurora' ? p * aur : p), k);
+      rows.push(`<div class="pkc-crow"><span class="pkc-clbl">CAÇA</span><span class="pkc-cval">${hunt.attempts} resets · ${pct(1 - Math.pow(1 - per, hunt.attempts))}</span>
+        <button class="pkc-mini pkc-mini-stop" data-act="hunt-stop" title="Parar a caça">■</button></div>`);
+    } else if (hunt.found) {
+      rows.push(`<div class="pkc-crow pkc-found"><span class="pkc-clbl">ACHOU</span><span class="pkc-cval">${hunt.found.kind === 'AURORA' ? '🌈' : '✨'} ${esc(hunt.found.name)}</span>
+        <button class="pkc-mini" data-act="hunt-start" title="Caçar de novo">▶</button></div>`);
+    } else {
+      rows.push(`<div class="pkc-crow"><span class="pkc-clbl">CAÇA</span><span class="pkc-cval pkc-muted">${esc(huntTargetLabel())}</span>
+        <button class="pkc-mini" data-act="hunt-start" title="Começar a caça">▶</button></div>`);
+    }
+    if (hunt.msg && !hunt.running && !hunt.found && /parad|pausad|limite|segurança|Erro|Comece|Aurora só|Digite/.test(hunt.msg)) {
+      rows.push(`<div class="pkc-crow pkc-cnote">${esc(hunt.msg)}</div>`);
+    }
+    // chefe
+    if (s && s.team && s.team.length && ui.boss) {
+      const w = ui.bossWin;
+      const cls = !w ? '' : w.p >= 0.5 ? 'pkc-hp-hi' : w.p >= 0.2 ? 'pkc-hp-mid' : 'pkc-hp-lo';
+      rows.push(`<div class="pkc-crow" title="Chance de vencer o próximo chefe com o time e a ordem atuais"><span class="pkc-clbl">${esc(shortName(ui.boss.name))}</span>
+        <div class="pkc-bar ${cls}"><span style="width:${w ? Math.round(w.p * 100) : 0}%"></span></div><b class="pkc-cpct">${w ? pct(w.p) : '…'}</b></div>`);
+      if (ui.gauntlet) rows.push(`<div class="pkc-crow" title="Simula a liga inteira em sequência, sem recuperar HP entre as lutas"><span class="pkc-clbl">LIGA</span><span class="pkc-cval">${gauntletText(ui.gauntlet, ui.boss.elite)}</span></div>`);
+    }
+    // rota
+    if (screenId() === 'map-screen' && ui.route && ui.route.labels.length) {
+      rows.push(`<div class="pkc-crow" title="${esc(ui.route.why || '')}"><span class="pkc-clbl">ROTA</span><span class="pkc-cval">${ui.route.labels.map(esc).join(' › ')}</span></div>`);
+    }
+    return rows.slice(0, 4).join('');
+  }
+
+  const shortName = n => { const t = String(n || 'CHEFE'); return (t.length > 10 ? t.slice(0, 9) + '…' : t).toUpperCase(); };
+  function huntTargetLabel() {
+    if (cfg.huntTarget === 'aurora') return 'alvo: Aurora';
+    if (cfg.huntTarget === 'newshiny') return 'alvo: shiny novo na Dex';
+    if (cfg.huntTarget === 'species') return 'alvo: ' + (cfg.huntSpecies || '—');
+    return 'alvo: Shiny';
   }
 
   function renderBody() {
     const body = root && root.querySelector('.pkc-body');
     if (!body) return;
+    if (compact()) { body.innerHTML = compactView(); return; }
     const b = blocked();
-    if (b && cfg.tab !== 'types') { body.innerHTML = `<p class="pkc-muted">${esc(b)}</p>`; return; }
+    if (b && cfg.tab !== 'types' && cfg.tab !== 'dex') { body.innerHTML = `<p class="pkc-muted">${esc(b)}</p>`; return; }
     if (cfg.tab === 'hunt') body.innerHTML = huntView();
     else if (cfg.tab === 'fight') body.innerHTML = fightView();
     else if (cfg.tab === 'team') body.innerHTML = teamView();
+    else if (cfg.tab === 'dex') body.innerHTML = dexView();
     else body.innerHTML = typesView();
   }
 
@@ -1246,6 +1765,7 @@
         <select data-cfg="huntTarget">
           <option value="shiny" ${cfg.huntTarget === 'shiny' ? 'selected' : ''}>Shiny (ou Aurora)</option>
           <option value="aurora" ${cfg.huntTarget === 'aurora' ? 'selected' : ''}>Só Aurora</option>
+          <option value="newshiny" ${cfg.huntTarget === 'newshiny' ? 'selected' : ''}>Shiny que falta na minha Dex</option>
           <option value="species" ${cfg.huntTarget === 'species' ? 'selected' : ''}>Pokémon específico</option>
         </select>
       </label>
@@ -1275,9 +1795,58 @@
         <span class="pkc-next" aria-hidden="true">▼</span>
       </div>
       <p class="pkc-muted">Faz o mesmo que você: R (reset) → clica no nó de captura da esquerda → confere as 3 opções. Para sozinho quando acha. Apertar qualquer tecla ou clicar no jogo pausa.</p>
-      ${huntLog.length ? `<details><summary>Histórico (${huntLog.length})</summary>
+      ${eggLine()}
+      ${huntLog.length ? `<details><summary>Histórico (${huntLog.length})</summary>${statsLine()}
         <ul class="pkc-log">${huntLog.slice().reverse().map(h => `<li>${h.kind === 'AURORA' ? '🌈' : '✨'} ${esc(h.name)} — ${h.attempts} resets, ${h.secs}s <small>${new Date(h.at).toLocaleString()}</small></li>`).join('')}</ul>
         <button class="pkc-link" data-act="clear-log">limpar</button></details>` : ''}`;
+  }
+
+  function eggLine() {
+    let pity = 0, chance = null;
+    try { pity = window.getLegendaryShinyPity(); chance = window.legendaryShinyChanceNow(); } catch { return ''; }
+    return `<div class="pkc-kv"><span class="pkc-lbl">OVO LENDÁRIO</span><span>${(chance * 100).toFixed(1)}% de shiny no próximo${pity ? ` <small>(${pity} sem shiny acumulados)</small>` : ''}</span></div>`;
+  }
+  function statsLine() {
+    const st = huntStats();
+    if (!st) return '';
+    return `<div class="pkc-statgrid">
+      <div><b>${st.n}</b><span>achados${st.aurora ? ` (${st.aurora} 🌈)` : ''}</span></div>
+      <div><b>${st.avg}</b><span>resets em média</span></div>
+      <div><b>${st.best}–${st.worst}</b><span>melhor–pior</span></div>
+      <div><b>${st.mins}</b><span>min caçando</span></div></div>`;
+  }
+
+  function dexView() {
+    const d = dexes();
+    if (ui.dexRegion == null) ui.dexRegion = currentRegionIdx();
+    const [rname, lo, hi] = REGIONS[ui.dexRegion];
+    const count = obj => { let n = 0; for (let id = lo; id <= hi; id++) if (inDex(obj, id)) n++; return n; };
+    const total = hi - lo + 1;
+    const bar = (label, n, cls) => `<div class="pkc-dexrow"><span class="pkc-lbl">${label}</span>
+      <div class="pkc-bar ${cls}"><span style="width:${Math.round(n / total * 100)}%"></span></div><b>${n}/${total}</b></div>`;
+    let h = `<label>Região<select data-ui="dexRegion">${REGIONS.map(([n], i) => `<option value="${i}" ${i === ui.dexRegion ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      ${bar('POKÉDEX', count(d.dex), 'pkc-bar-dex')}${bar('SHINY', count(d.shiny), 'pkc-bar-shiny')}${bar('AURORA', count(d.aurora), 'pkc-bar-aurora')}`;
+    const pool = mapPoolIds();
+    if (pool.length) {
+      const noDex = pool.filter(id => !inDex(d.dex, id)).length;
+      const noShiny = pool.filter(id => !inDex(d.shiny, id)).length;
+      h += `<div class="pkc-sect"><span class="pkc-lbl">NESTE MAPA</span><small>${noDex ? `${noDex} novos na Dex · ` : ''}${noShiny} shinies faltando</small></div>
+        <div class="pkc-dexgrid">${pool.map(id => {
+          const got = inDex(d.dex, id), sh = inDex(d.shiny, id);
+          const tip = `${speciesName(id)} — ${got ? 'na Dex' : 'falta na Dex'} · ${sh ? 'shiny ✔' : 'falta shiny'}`;
+          return `<span class="pkc-dexmon${got ? '' : ' pkc-dex-miss'}${sh ? ' pkc-dex-sh' : ''}" title="${esc(tip)}"><img src="${spriteOf(id)}" alt="" loading="lazy"></span>`;
+        }).join('')}</div>
+        <p class="pkc-muted">Apagado: falta na Dex · ✨: já tem o shiny.</p>`;
+    }
+    h += `<label>Buscar Pokémon<input data-ui="dexQuery" value="${esc(ui.dexQuery || '')}" placeholder="ex.: dratini"></label>`;
+    for (const id of searchSpecies(ui.dexQuery)) {
+      const w = whereToFind(id);
+      h += `<div class="pkc-dexhit"><img class="pkc-spr" src="${spriteOf(id)}" alt="">
+        <div><b>${esc(speciesName(id))}</b> <small>#${id}</small><br>
+        <small>${inDex(d.dex, id) ? '✔ Dex' : '✘ Dex'} · ${inDex(d.shiny, id) ? '✔ shiny' : '✘ shiny'}${inDex(d.aurora, id) ? ' · ✔ aurora' : ''}</small><br>
+        <small class="pkc-muted">${w.maps.length ? 'Story: ' + esc(w.maps.join(', ')) : 'Fora dos mapas do Story'}${w.tower.length ? ' · Tower: ' + esc(w.tower.slice(0, 4).join(', ')) : ''}</small></div></div>`;
+    }
+    return h;
   }
 
   function fightView() {
@@ -1286,7 +1855,7 @@
     const boss = ui.boss;
     let h = '';
     if (!boss) {
-      h += `<p class="pkc-muted">${s.currentMap >= 8 && !s.isEndlessMode ? 'Elite Four / Campeão: previsão ainda não suportada.' : 'Calculando próximo chefe…'}</p>`;
+      h += `<p class="pkc-muted">Calculando próximo chefe…</p>`;
     } else {
       const w = ui.bossWin;
       const hpCls = !w ? '' : w.p >= 0.5 ? 'pkc-hp-hi' : w.p >= 0.2 ? 'pkc-hp-mid' : 'pkc-hp-lo';
@@ -1412,7 +1981,7 @@
   let fightJob = null;
   async function refreshTab(force) {
     if (!isOpen()) return;
-    if (cfg.tab === 'fight' && !blocked() && !hunt.running) {
+    if ((compact() || cfg.tab === 'fight') && !blocked() && !hunt.running) {
       const s = S();
       if (s && s.team && s.team.length) {
         const prev = ui.boss;
@@ -1424,6 +1993,7 @@
           renderBody();
           try {
             ui.bossWin = ui.boss ? await winRate(s.team, ui.boss.team, cfg.sims, job) : null;
+            ui.gauntlet = ui.boss && ui.boss.elite && ui.boss.elite.length > 1 ? await simGauntlet(s.team, ui.boss.elite, 150, job) : null;
           } catch (e) { if (e !== CANCELLED) throw e; return; }
         }
       }
@@ -1452,11 +2022,23 @@
         ui.lastSig = sig;
         if (screenChanged) { if (forcedOpenOn && forcedOpenOn !== screenId()) forcedOpenOn = null; render(); }
         ui.bossWin = null; ui.order = null;
-        if (screenChanged) cancelJob(advJob);
+        if (screenChanged) {
+          cancelJob(advJob);
+          // a faixa da preparação nunca mostra números de um chefe anterior
+          const prep = document.getElementById('pkc-prep');
+          if (prep) prep.remove();
+          prepKey = null;
+        }
         if (!hunt.running) refreshTab(false).catch(e => console.warn('[Pokelike Companion] refresh', e));
       }
       if (hunt.running && cfg.tab === 'hunt') renderBody();
-      if (!hunt.running && ['item-screen', 'passive-screen', 'stat-buff-screen'].includes(screenId())) runAdvisor(choiceAdvisor);
+      const scr = screenId();
+      if (!hunt.running && ['item-screen', 'passive-screen', 'stat-buff-screen'].includes(scr)) runAdvisor(choiceAdvisor);
+      if (!hunt.running && scr === 'elite-prep-screen') runAdvisor(prepAdvisor);
+      if (!hunt.running && scr === 'swap-screen') runAdvisor(swapAdvisor);
+      if (!hunt.running && document.querySelector('#item-equip-modal button[data-tutor]')) runAdvisor(tutorAdvisor);
+      if (!hunt.running && document.getElementById('item-equip-modal')) equipHint();
+      if (scr === 'map-screen') routeAdvisor();
       if (screenId() === 'catch-screen') {
         if (hunt.running) highlightCatchCards(); else runAdvisor(catchAdvisor);
       }

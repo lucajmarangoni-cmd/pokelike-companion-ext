@@ -17,14 +17,35 @@ Para atualizar depois: substitua os arquivos e clique em ↻ no card da extensã
 
 ## O que tem
 
+O painel tem dois modos (botão ⤢ no cabeçalho):
+
+- **Compacto** (padrão): uma barra com até 3 linhas que mudam conforme a tela:
+  caça (▶ / ■ e progresso), chance contra o próximo chefe (e a liga inteira na Elite Four)
+  e a rota sugerida quando você está no mapa.
+- **Estendido**: todas as ferramentas em abas.
+
 | Aba | O que faz |
 |---|---|
-| **Caça** | Reset automático até sair um shiny, uma aurora ou um Pokémon específico. Faz o mesmo que você faz na mão (R → nó de captura da esquerda → confere as 3 opções). Para sozinho, toca um som e destaca o card. Mostra a chance por reset, quantos resets em média e o histórico do que você achou. |
-| **Luta** | Próximo chefe (líder de ginásio no Story, treinador no Battle Tower), **chance de vitória** calculada com 300 lutas simuladas pelo próprio motor do jogo, **melhor ordem do time** (testa todas as ordens) e duelo de tipos. |
-| **Time** | Seu time com HP e o golpe que cada um usa, as fraquezas que o time compartilha, os buracos de cobertura de ataque e os traits (no Battle Tower). |
-| **Tipos** | Tabela de tipos: escolha 1 ou 2 tipos e veja o que bate 2x/4x, o que resiste e quanto cada Pokémon do seu time causa. |
-| **Notas S+ a C** | Nas telas de **relíquia**, **item** e **boost de atributo**, cada opção ganha uma nota (S+, S, A, B ou C) com os motivos: em quem equipar, com quem combina, quanto melhora a luta contra o próximo chefe. Ex.: *Mystic Water — S+, equipar em Gyarados: +40% no dano Água, ele vai na frente e é quem mais luta.* |
-| **Tela de captura** | Embaixo de cada opção: shiny/aurora, tipo de ataque, cobertura nova, se cobre ou piora fraquezas do time, traits que sobem e quanto muda a chance contra o próximo chefe. |
+| **Caça** | Reset automático até sair um shiny, uma aurora, **um shiny que falta na sua Dex** ou um Pokémon específico. Chance por reset, histórico com estatísticas (média, melhor e pior caça) e a chance atual do **ovo lendário** com o bônus acumulado. |
+| **Luta** | Próximo chefe (inclusive cada membro da **Elite Four**), chance de vitória simulada pelo motor do jogo, melhor ordem do time e duelo de tipos. |
+| **Time** | HP, golpe de cada um, fraquezas compartilhadas, buracos de cobertura e traits. |
+| **Dex** | Progresso da Pokédex, Shiny Dex e Aurora Dex por região, **quais Pokémon do mapa atual ainda faltam**, e busca com onde cada um aparece. |
+| **Tipos** | Tabela de tipos com 1 ou 2 tipos e quanto o seu time causa. |
+
+E dentro das telas do próprio jogo:
+
+| Tela | O que aparece |
+|---|---|
+| **Mapa** | Uma trilha pontilhada dourada com a rota sugerida até o chefe (captura vale mais com espaço no time, centro vale mais com HP baixo). |
+| **Captura** | Tipo de ataque, cobertura nova, fraquezas, traits, chance contra o chefe e o selo **NOVO NA DEX / SHINY NOVO** (só quando ajuda a escolher). |
+| **Relíquia, item e boost** | Nota **S+ a C** na base do card, com em quem equipar; os motivos completos aparecem ao passar o mouse. |
+| **Time cheio** | Selo no canto de cada Pokémon: quanto a troca pelo novo muda a luta contra o chefe. |
+| **Move Tutor** | Nota em cada linha: em quem o golpe mais forte faz mais diferença. |
+| **Equipar item** | ★ no Pokémon que a nota do item sugeriu. |
+| **Preparação do chefe** | Faixa com chance de vitória, **liga inteira** (sem recuperar HP entre as lutas: mostra até onde você costuma chegar) e ordem sugerida. |
+
+**Treinadores comuns** não têm previsão: o jogo sorteia o time deles só na hora em que você
+clica no nó, então não dá pra saber antes.
 
 ## Coisas do jogo que vale saber
 
