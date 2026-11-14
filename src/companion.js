@@ -1722,7 +1722,7 @@
       ${open ? (compact() ? '<div class="pkc-body pkc-cbody"></div>' : `
       <div class="pkc-tabs">${tabs.map(([id, l]) => `<button data-act="tab" data-tab="${id}" class="${cfg.tab === id ? 'on' : ''}"><span class="pkc-cur">▶</span>${l}</button>`).join('')}</div>
       <div class="pkc-body"></div>
-      ${DONATE_URL ? `<a class="pkc-donate" href="${esc(DONATE_URL)}" target="_blank" rel="noopener">♥ ${L('Curtiu? Apoie o projeto', 'Enjoying it? Support the project')}</a>` : ''}`) : ''}`;
+      ${DONATE_URL ? `<a class="pkc-donate" href="${esc(DONATE_URL)}" target="_blank" rel="noopener"><span class="pkc-heart">♥</span>${L('Curtiu? Apoie o projeto', 'Enjoying it? Support the project')}</a>` : ''}`) : ''}`;
     renderBody();
   }
 

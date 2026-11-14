@@ -385,13 +385,17 @@
 #pkc-root.pkc-extended .pkc-tabs { grid-template-columns: repeat(5, 1fr); }
 #pkc-root.pkc-extended .pkc-tabs button { padding: 6px 0; letter-spacing: -.3px; }
 
-/* link de doação: discreto, no rodapé do modo estendido */
+/* botão de doação: vermelho com texto branco, no rodapé do modo estendido */
 #pkc-root .pkc-donate {
-  display: block; margin: 0 10px 8px; padding: 5px 0 0; text-align: center;
-  border-top: 2px dashed var(--pkc-card); color: var(--pkc-red-dk); text-decoration: none;
-  font: 7px/1.8 var(--pkc-pixel);
+  display: block; margin: 2px 12px 12px; padding: 9px 8px; text-align: center;
+  background: var(--pkc-red); color: #fff; text-decoration: none; text-shadow: 1px 1px 0 var(--pkc-red-dk);
+  border: 2px solid #000; border-radius: 2px;
+  box-shadow: 3px 3px 0 rgba(0,0,0,.35), inset 0 -3px 0 var(--pkc-red-dk);
+  font: 8px/1.4 var(--pkc-pixel); text-transform: uppercase; letter-spacing: .3px;
 }
-#pkc-root .pkc-donate:hover { text-decoration: underline; }
+#pkc-root .pkc-donate:hover { filter: brightness(1.12); }
+#pkc-root .pkc-donate:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 rgba(0,0,0,.35), inset 0 -1px 0 var(--pkc-red-dk); }
 /* texto da ordem sugerida num bloco só (a linha é flex) */
 .pkc-prep-text { display: block; flex: 1; min-width: 0; }
 .pkc-prep-text b { display: inline; font: 700 12px/1.4 "DotGothic16", monospace; }
+#pkc-root .pkc-heart { margin-right: 6px; font: 12px/1 system-ui, sans-serif; vertical-align: -1px; }
