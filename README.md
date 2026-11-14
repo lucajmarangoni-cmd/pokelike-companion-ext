@@ -1,104 +1,96 @@
 # Pokelike Companion
 
-Extensão de navegador (Chrome, Edge, Brave, Opera) que coloca um painel de apoio
-no [Pokelike](https://pokelike.xyz), no estilo dos menus dos jogos de Pokémon.
+> 🇧🇷 [Leia em português](README.pt-BR.md)
 
-![Painel na tela de captura](preview.png)
+A free browser extension (Chrome, Edge, Brave, Opera) that adds a helper panel to
+[Pokelike](https://pokelike.xyz): boss win chances simulated with the game's own engine, S+ to C grades
+for your choices, a Dex tracker, a suggested map route and an optional shiny auto-reroll.
 
-## Instalar
+**Unofficial fan project** — not affiliated with Pokelike, Nintendo, Game Freak or The Pokémon Company.
 
-1. Baixe o repositório (botão **Code → Download ZIP**) e descompacte numa pasta que você não vá apagar.
-2. Abra `chrome://extensions` (no Edge: `edge://extensions`).
-3. Ligue o **Modo do desenvolvedor** (canto superior direito).
-4. Clique em **Carregar sem compactação** e escolha a pasta que tem o `manifest.json`.
-5. Abra ou recarregue o pokelike.xyz. O painel aparece no canto inferior esquerdo.
+![Boss prep screen with win chance and suggested order](docs/screenshots/4-boss-prep.png)
 
-Para atualizar depois: substitua os arquivos e clique em ↻ no card da extensão.
+## Install
 
-## O que tem
+1. Download this repository (**Code → Download ZIP**) and unzip it somewhere you won't delete.
+2. Open `chrome://extensions` (Edge: `edge://extensions`) and turn on **Developer mode**.
+3. Click **Load unpacked** and pick the folder that contains `manifest.json`.
+4. Open or reload pokelike.xyz. The panel shows up in the bottom-left corner.
 
-O painel tem dois modos (botão ⤢ no cabeçalho):
+To update: replace the files in the same folder, click ↻ on the extension card and reload the game.
 
-- **Compacto** (padrão): uma barra com até 3 linhas que mudam conforme a tela:
-  caça (▶ / ■ e progresso), chance contra o próximo chefe (e a liga inteira na Elite Four)
-  e a rota sugerida quando você está no mapa.
-- **Estendido**: todas as ferramentas em abas.
+## What it does
 
-| Aba | O que faz |
+The panel has two modes (⤢ button in its header):
+
+- **Compact** (default): up to 3 lines that change with the screen — hunt (▶/■ and progress), win chance
+  against the next boss (plus the whole league on the Elite Four) and the suggested route on the map.
+- **Extended**: every tool, in tabs (Hunt, Fight, Team, Dex, Types).
+
+Inside the game's own screens:
+
+| Screen | What you get |
 |---|---|
-| **Caça** | Reset automático até sair um shiny, uma aurora, **um shiny que falta na sua Dex** ou um Pokémon específico. Chance por reset, histórico com estatísticas (média, melhor e pior caça) e a chance atual do **ovo lendário** com o bônus acumulado. |
-| **Luta** | Próximo chefe (inclusive cada membro da **Elite Four**), chance de vitória simulada pelo motor do jogo, melhor ordem do time e duelo de tipos. |
-| **Time** | HP, golpe de cada um, fraquezas compartilhadas, buracos de cobertura e traits. |
-| **Dex** | Progresso da Pokédex, Shiny Dex e Aurora Dex por região, **quais Pokémon do mapa atual ainda faltam**, e busca com onde cada um aparece. |
-| **Tipos** | Tabela de tipos com 1 ou 2 tipos e quanto o seu time causa. |
+| **Boss prep** | Win chance, **suggested team order** and, on the Elite Four, how far you usually get in the league (no healing between fights). |
+| **Items, relics, stat boosts** | An **S+ to C grade** on each card with who should hold it; hover for every reason. |
+| **Catch** | Attack type, new coverage, team weaknesses it covers or stacks, win-chance change, and a **NEW IN DEX / NEW SHINY** badge. |
+| **Full team** | A corner badge on each Pokémon: how swapping it for the new one changes the boss fight. |
+| **Move Tutor** | A grade on each row: where the stronger move matters most. |
+| **Map** | A subtle dotted line with a suggested path to the boss. |
 
-E dentro das telas do próprio jogo:
+![Item grades](docs/screenshots/3-item-grades.png)
+![Catch tips](docs/screenshots/2-catch-tips.png)
+![Map route and compact panel](docs/screenshots/1-map-route-compact.png)
 
-| Tela | O que aparece |
-|---|---|
-| **Mapa** | Uma trilha pontilhada dourada com a rota sugerida até o chefe (captura vale mais com espaço no time, centro vale mais com HP baixo). |
-| **Captura** | Tipo de ataque, cobertura nova, fraquezas, traits, chance contra o chefe e o selo **NOVO NA DEX / SHINY NOVO** (só quando ajuda a escolher). |
-| **Relíquia, item e boost** | Nota **S+ a C** na base do card, com em quem equipar; os motivos completos aparecem ao passar o mouse. |
-| **Time cheio** | Selo no canto de cada Pokémon: quanto a troca pelo novo muda a luta contra o chefe. |
-| **Move Tutor** | Nota em cada linha: em quem o golpe mais forte faz mais diferença. |
-| **Equipar item** | ★ no Pokémon que a nota do item sugeriu. |
-| **Preparação do chefe** | Faixa com chance de vitória, **liga inteira** (sem recuperar HP entre as lutas: mostra até onde você costuma chegar) e ordem sugerida. |
+**Hunt tab** — optional shiny auto-reroll: it does what you'd do by hand (R + the left catch node) and stops
+by itself on a shiny, an aurora, a **shiny missing from your Dex** or a specific Pokémon. Any key press or
+click in the game pauses it. Also shows the real odds, your hunt history and the legendary egg's current
+shiny chance.
 
-**Treinadores comuns** não têm previsão: o jogo sorteia o time deles só na hora em que você
-clica no nó, então não dá pra saber antes.
+**Dex tab** — Pokédex / Shiny / Aurora progress per region, what's still missing on the current map, and
+where to find any species.
 
-## Coisas do jogo que vale saber
+<p>
+  <img src="docs/screenshots/6-panel-fight.png" width="300" alt="Fight tab">
+  <img src="docs/screenshots/7-panel-dex.png" width="300" alt="Dex tab">
+</p>
 
-- **Shiny**: 1% por Pokémon (2% com Shiny Charm, ×2 com a passiva de shiny, ×2 no
-  desafio Aurora Hunt). O 1º nó tem 3 opções, então dá ~3% por reset.
-- **Aurora só existe no Battle Tower / Challenges**: são 10% dos shinies (20% com o
-  Aurora Charm). No Story ela nunca aparece, nem caçando.
-- **Cada Pokémon ataca com um tipo só**: o primeiro tipo dele que não é Normal.
-  Um Pidgey (Normal/Flying), por exemplo, só bate Flying.
-- **Traits** (Battle Tower): cada Pokémon dá 1 ponto por tipo (shiny conta 2,
-  aurora 3) e cada 2 pontos sobem 1 tier.
+## How grades work
 
-## Como as notas são calculadas
+Each grade adds two things:
 
-A nota soma duas coisas:
+1. **Simulation**: the game's battle engine runs the next boss fight with and without the option (same
+   battle seeds for every option, so differences come from the option, not luck). If the fight is too
+   easy or too hard to compare, one side gets more HP until it's close to 50%.
+2. **Synergy**: written rules — type items only help Pokémon of that type (and make them attack with it,
+   +40% damage), kit relics count your Pokémon and traits of that type, a SPE boost checks whether you
+   start moving before someone on the boss team, and so on.
 
-1. **Simulação**: o motor de batalha do próprio jogo roda a luta contra o próximo chefe com e
-   sem a opção (as mesmas sementes de batalha pra todas as opções, então a diferença vem da
-   opção e não da sorte). Se a luta for fácil ou difícil demais pra comparar, a simulação
-   aumenta a vida de um dos lados até a chance ficar perto de 50%.
-2. **Sinergia**: regras com o motivo escrito. Item de tipo só serve pra quem é daquele tipo
-   (e quem segura passa a atacar com ele, +40% de dano); relíquia de kit conta os Pokémon e
-   traits do tipo; boost de SPE vê se você passa a atacar antes de alguém do chefe; e assim por diante.
+Bands: **S+** ≥ 14 · **S** ≥ 9 · **A** ≥ 5 · **B** ≥ 1.5 · **C** below. Treat them as advice, not gospel.
 
-Faixas: **S+** ≥ 14 · **S** ≥ 9 · **A** ≥ 5 · **B** ≥ 1,5 · **C** abaixo. "★ MELHOR" só
-aparece quando uma opção ganha com folga. Dá pra desligar na aba **Luta → Dicas na tela do jogo**.
+## Game mechanics worth knowing
 
-## Desempenho
+- Each Pokémon attacks with **one type only**: its first non-Normal type (a Pidgey only hits Flying).
+- Holding a **type item of its own type** makes a Pokémon switch to that type and hit for +40%.
+- **Shiny**: 1% per Pokémon (2% with Shiny Charm, ×2 with the shiny passive, ×2 in Aurora Hunt) — about
+  3% per reset on the first catch node.
+- **Aurora only exists in Battle Tower / Challenges**: 10% of shinies (20% with the Aurora Charm).
+- **Traits** (Battle Tower): 1 point per type per Pokémon (shiny 2, aurora 3); every 2 points = +1 tier.
 
-As simulações rodam em fatias curtas, devolvendo o controle pro navegador entre elas: clicar
-num card nunca fica esperando o cálculo, e sair da tela cancela o que estava sendo calculado.
-O espaço das dicas é reservado no mesmo instante em que o jogo desenha os cards, então nada
-pula de lugar embaixo do mouse.
+## Safety
 
-## Segurança
+- **Fully off in Ranked and Soul Link.** Ranked records your inputs as anti-cheat; the extension stays away.
+- Simulations save and restore the game's RNG seed, so they **never change a real outcome**.
+- Hunting only resets an empty run; if your run has progress, it asks first.
+- No network requests, no data collection, no accounts — everything runs in your browser.
+- Heavy work runs in small slices, so the game never freezes.
 
-- **Fica desligado no modo Ranked e no Soul Link.** O Ranked grava seus inputs
-  como anti-cheat, e a extensão não mexe em nada lá.
-- As simulações salvam e restauram a seed do jogo, igual às simulações internas do
-  próprio Pokelike. Elas **não mudam o resultado** das suas lutas.
-- A caça só reseta uma run vazia. Se a run já tiver progresso, ela pergunta antes.
-  Qualquer tecla ou clique seu no jogo pausa a caça na hora.
-- Tudo roda local. A extensão não manda nada pra lugar nenhum.
+## Language
 
-## Se parar de funcionar
+The panel follows the game's language (Portuguese if the game is in Portuguese, English otherwise). You
+can change it under **Fight → Options**.
 
-O Pokelike atualiza com frequência. A extensão usa funções internas do jogo
-(`runBattle`, `executeResetRun`, `campaignGymTeam`...). Se alguma for renomeada,
-o console mostra `[Pokelike Companion] jogo não carregou as funções esperadas`.
+## If it breaks
 
-## Ícones
-
-O ícone da extensão (`icons/`) é uma Ultra Ball em pixel art própria, gerada por
-`tools/make_icons.py`: edite a grade 16×16 do script e rode `python3 tools/make_icons.py`
-(precisa do Pillow). A Ultra Ball do cabeçalho do painel é carregada do próprio site
-do jogo enquanto você joga, e não fica guardada aqui.
+Pokelike updates often and the extension uses the game's internal functions. If something stops working,
+the browser console shows `[Pokelike Companion]` messages — please open an issue.
