@@ -1350,7 +1350,7 @@
     if (!cfg.routeAdvisor || hunt.running || blocked() || screenId() !== 'map-screen' || !s || !s.map) return;
     const key = bossKey() + '|' + Object.values(s.map.nodes).filter(n => n.visited).length + '|' + s.team.map(m => `${m._uid}:${m.currentHp}`).join(',');
     const svg = document.querySelector('#map-screen svg');
-    if (key !== routeKey) { routeKey = key; ui.route = planRoute(); if (compact()) renderBody(); }
+    if (key !== routeKey) { routeKey = key; ui.route = planRoute(); if (compact() || cfg.tab === 'fight') renderBody(); }
     if (svg && !svg.querySelector('.pkc-route')) drawRoute(ui.route);
   }
 
@@ -1738,6 +1738,15 @@
    * Modo compacto: no máximo 3 linhas, só o que importa na tela atual.
    * Caça (sempre), chefe (quando há run) e rota (no mapa).
    */
+  /** Linha "ROTA … ON/OFF": aparece no mapa, nos dois modos do painel. */
+  function routeRow() {
+    if (screenId() !== 'map-screen' || hunt.running || !S() || !S().map) return '';
+    const tog = `<button class="pkc-mini pkc-mini-tog${cfg.routeAdvisor ? '' : ' off'}" data-act="route-toggle" title="${cfg.routeAdvisor ? L('Esconder a rota sugerida', 'Hide the suggested route') : L('Mostrar a rota sugerida', 'Show the suggested route')}">${cfg.routeAdvisor ? 'ON' : 'OFF'}</button>`;
+    if (!cfg.routeAdvisor) return `<div class="pkc-crow"><span class="pkc-clbl">${L('ROTA', 'ROUTE')}</span><span class="pkc-cval pkc-muted">${L('desligada', 'off')}</span>${tog}</div>`;
+    const labels = ui.route && ui.route.labels.length ? ui.route.labels.map(esc).join(' › ') : '…';
+    return `<div class="pkc-crow" title="${esc((ui.route && ui.route.why) || '')}"><span class="pkc-clbl">${L('ROTA', 'ROUTE')}</span><span class="pkc-cval">${labels}</span>${tog}</div>`;
+  }
+
   function compactView() {
     const s = S();
     const b = blocked();
@@ -1767,11 +1776,7 @@
       if (ui.gauntlet) rows.push(`<div class="pkc-crow" title="${L('Simula a liga inteira em sequência, sem recuperar HP entre as lutas', 'Simulates the whole league in a row, with no healing between fights')}"><span class="pkc-clbl">${L('LIGA', 'LEAGUE')}</span><span class="pkc-cval">${gauntletText(ui.gauntlet, ui.boss.elite)}</span></div>`);
     }
     // rota
-    if (screenId() === 'map-screen' && !hunt.running) {
-      const tog = `<button class="pkc-mini pkc-mini-tog${cfg.routeAdvisor ? '' : ' off'}" data-act="route-toggle" title="${cfg.routeAdvisor ? L('Esconder a rota sugerida', 'Hide the suggested route') : L('Mostrar a rota sugerida', 'Show the suggested route')}">${cfg.routeAdvisor ? 'ON' : 'OFF'}</button>`;
-      if (!cfg.routeAdvisor) rows.push(`<div class="pkc-crow"><span class="pkc-clbl">${L('ROTA', 'ROUTE')}</span><span class="pkc-cval pkc-muted">${L('desligada', 'off')}</span>${tog}</div>`);
-      else if (ui.route && ui.route.labels.length) rows.push(`<div class="pkc-crow" title="${esc(ui.route.why || '')}"><span class="pkc-clbl">${L('ROTA', 'ROUTE')}</span><span class="pkc-cval">${ui.route.labels.map(esc).join(' › ')}</span>${tog}</div>`);
-    }
+    const rr = routeRow(); if (rr) rows.push(rr);
     return rows.slice(0, 4).join('');
   }
 
@@ -1914,7 +1919,8 @@
     const s = S();
     if (!s || !s.team || !s.team.length) return `<p class="pkc-muted">${L('Comece uma run para ver as previsões.', 'Start a run to see predictions.')}</p>` + optionsBlock();
     const boss = ui.boss;
-    let h = '';
+    const rr = routeRow();
+    let h = rr ? `<div class="pkc-route-ext">${rr}</div>` : '';
     if (!boss) {
       h += `<p class="pkc-muted">${L('Calculando próximo chefe…', 'Working out the next boss…')}</p>`;
     } else {

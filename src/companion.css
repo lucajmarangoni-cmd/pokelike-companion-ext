@@ -405,3 +405,4 @@
 #pkc-root select.pkc-mini-select { display: inline-block; width: auto; margin: 0; padding: 1px 4px; font-size: 11px; }
 #pkc-root .pkc-mini-tog { width: 32px; }
 #pkc-root .pkc-mini-tog.off { background: #5a5a5a; }
+#pkc-root .pkc-route-ext { margin: 0 0 10px; padding-bottom: 8px; border-bottom: 2px dashed rgba(0,0,0,.15); }
