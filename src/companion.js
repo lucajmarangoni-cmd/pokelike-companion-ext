@@ -1864,18 +1864,33 @@
       <div class="pkc-bar ${cls}"><span style="width:${Math.round(n / total * 100)}%"></span></div><b>${n}/${total}</b></div>`;
     let h = `<label>${L('Região', 'Region')}<select data-ui="dexRegion">${REGIONS.map(([n], i) => `<option value="${i}" ${i === ui.dexRegion ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       ${bar('POKÉDEX', count(d.dex), 'pkc-bar-dex')}${bar('SHINY', count(d.shiny), 'pkc-bar-shiny')}${bar('AURORA', count(d.aurora), 'pkc-bar-aurora')}`;
-    const pool = mapPoolIds();
+    const monCell = id => {
+      const got = inDex(d.dex, id), sh = inDex(d.shiny, id);
+      const tip = `${speciesName(id)} · ${got ? L('na Dex', 'in Dex') : L('falta na Dex', 'missing from Dex')} · ${sh ? 'shiny ✔' : L('falta shiny', 'shiny missing')}`;
+      return `<span class="pkc-dexmon${got ? '' : ' pkc-dex-miss'}${sh ? ' pkc-dex-sh' : ''}" title="${esc(tip)}"><img src="${spriteOf(id)}" alt="" loading="lazy"></span>`;
+    };
+    // "Neste mapa" só faz sentido na região da run atual
+    const pool = ui.dexRegion === currentRegionIdx() ? mapPoolIds() : [];
     if (pool.length) {
       const noDex = pool.filter(id => !inDex(d.dex, id)).length;
       const noShiny = pool.filter(id => !inDex(d.shiny, id)).length;
       h += `<div class="pkc-sect"><span class="pkc-lbl">${L('NESTE MAPA', 'THIS MAP')}</span><small>${noDex ? `${noDex} ${L('novos na Dex', 'new to Dex')} · ` : ''}${noShiny} ${L('shinies faltando', 'shinies missing')}</small></div>
-        <div class="pkc-dexgrid">${pool.map(id => {
-          const got = inDex(d.dex, id), sh = inDex(d.shiny, id);
-          const tip = `${speciesName(id)} — ${got ? L('na Dex', 'in Dex') : L('falta na Dex', 'missing from Dex')} · ${sh ? 'shiny ✔' : L('falta shiny', 'shiny missing')}`;
-          return `<span class="pkc-dexmon${got ? '' : ' pkc-dex-miss'}${sh ? ' pkc-dex-sh' : ''}" title="${esc(tip)}"><img src="${spriteOf(id)}" alt="" loading="lazy"></span>`;
-        }).join('')}</div>
-        <p class="pkc-muted">${L('Apagado: falta na Dex · ✨: já tem o shiny.', 'Faded: missing from Dex · ✨: shiny owned.')}</p>`;
+        <div class="pkc-dexgrid">${pool.map(monCell).join('')}</div>`;
     }
+    // o que falta na região escolhida (segue o seletor de região)
+    const want = ui.dexMissing || 'dex';
+    const all = []; for (let id = lo; id <= hi; id++) all.push(id);
+    const missing = all.filter(id => !inDex(want === 'shiny' ? d.shiny : d.dex, id));
+    const rname = REGIONS[ui.dexRegion][0];
+    h += `<div class="pkc-sect"><span class="pkc-lbl">${L('FALTAM EM', 'MISSING IN')} ${esc(rname.toUpperCase())}</span>
+        <select class="pkc-mini-select" data-ui="dexMissing">
+          <option value="dex" ${want === 'dex' ? 'selected' : ''}>${L('na Pokédex', 'Pokédex')}</option>
+          <option value="shiny" ${want === 'shiny' ? 'selected' : ''}>${L('shiny', 'shiny')}</option>
+        </select></div>
+      ${missing.length
+        ? `<div class="pkc-dexgrid pkc-dexgrid-scroll">${missing.map(monCell).join('')}</div>
+           <p class="pkc-muted">${missing.length} ${L('faltando', 'missing')} · ${L('Apagado: falta na Dex · ✨: já tem o shiny.', 'Faded: missing from Dex · ✨: shiny owned.')}</p>`
+        : `<p class="pkc-good">${L('Completo!', 'Complete!')}</p>`}`;
     h += `<label>${L('Buscar Pokémon', 'Find a Pokémon')}<input data-ui="dexQuery" value="${esc(ui.dexQuery || '')}" placeholder="${L('ex.: dratini', 'e.g. dratini')}"></label>`;
     for (const id of searchSpecies(ui.dexQuery)) {
       const w = whereToFind(id);

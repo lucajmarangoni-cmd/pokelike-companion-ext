@@ -399,3 +399,7 @@
 .pkc-prep-text { display: block; flex: 1; min-width: 0; }
 .pkc-prep-text b { display: inline; font: 700 12px/1.4 "DotGothic16", monospace; }
 #pkc-root .pkc-heart { margin-right: 6px; font: 12px/1 system-ui, sans-serif; vertical-align: -1px; }
+
+/* Dex: lista do que falta na região (rola dentro do painel) */
+#pkc-root .pkc-dexgrid-scroll { max-height: 210px; overflow-y: auto; padding-right: 2px; }
+#pkc-root select.pkc-mini-select { display: inline-block; width: auto; margin: 0; padding: 1px 4px; font-size: 11px; }
