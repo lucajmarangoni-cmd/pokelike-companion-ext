@@ -403,3 +403,5 @@
 /* Dex: lista do que falta na região (rola dentro do painel) */
 #pkc-root .pkc-dexgrid-scroll { max-height: 210px; overflow-y: auto; padding-right: 2px; }
 #pkc-root select.pkc-mini-select { display: inline-block; width: auto; margin: 0; padding: 1px 4px; font-size: 11px; }
+#pkc-root .pkc-mini-tog { width: 32px; }
+#pkc-root .pkc-mini-tog.off { background: #5a5a5a; }
