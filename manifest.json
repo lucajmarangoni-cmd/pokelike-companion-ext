@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Pokelike Companion",
-  "version": "0.5.5",
-  "description": "Unofficial helper panel for Pokelike: boss win chances, S+ to C grades, Dex tracker, map route and optional shiny auto-reroll.",
+  "version": "0.6.0",
+  "description": "Unofficial helper panel for Pokelike: boss win chances, S+ to C grades, Dex tracker and map route.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",

@@ -382,7 +382,7 @@
 .pkc-corner.pkc-corner-best { outline: 2px solid #f8d030; outline-offset: 1px; }
 
 /* 5 abas numa linha só */
-#pkc-root.pkc-extended .pkc-tabs { grid-template-columns: repeat(5, 1fr); }
+#pkc-root.pkc-extended .pkc-tabs { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 1fr; }
 #pkc-root.pkc-extended .pkc-tabs button { padding: 6px 0; letter-spacing: -.3px; }
 
 /* botão de doação: vermelho com texto branco, no rodapé do modo estendido */
@@ -406,3 +406,9 @@
 #pkc-root .pkc-mini-tog { width: 32px; }
 #pkc-root .pkc-mini-tog.off { background: #5a5a5a; }
 #pkc-root .pkc-route-ext { margin: 0 0 10px; padding-bottom: 8px; border-bottom: 2px dashed rgba(0,0,0,.15); }
+/* engrenagem de opções na barra do título */
+#pkc-root .pkc-opts { margin-left: auto; font-size: 13px; line-height: 1; }
+#pkc-root .pkc-opts + .pkc-mode { margin-left: 4px; }
+#pkc-root .pkc-opts.on { background: #f8e070; }
+#pkc-root .pkc-optview label { display: block; margin: 6px 0; }
+#pkc-root .pkc-optview .pkc-sect { display: flex; align-items: center; justify-content: space-between; }

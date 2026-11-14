@@ -5,7 +5,9 @@
 Extensão de navegador (Chrome, Edge, Brave, Opera) que coloca um painel de apoio
 no [Pokelike](https://pokelike.xyz), no estilo dos menus dos jogos de Pokémon.
 
-![Painel na tela de captura](preview.png)
+**Projeto de fã, não oficial**, compartilhado com o OK do desenvolvedor do Pokelike.
+
+![Tela de preparação do chefe com chance de vitória e ordem sugerida](docs/screenshots/4-boss-prep.png)
 
 ## Instalar
 
@@ -19,19 +21,18 @@ Para atualizar depois: substitua os arquivos e clique em ↻ no card da extensã
 
 ## O que tem
 
-O painel tem dois modos (botão ⤢ no cabeçalho):
+O painel tem dois modos (botão ⤢ no cabeçalho) e um menu de opções (botão ⚙):
 
 - **Compacto** (padrão): uma barra com até 3 linhas que mudam conforme a tela:
-  caça (▶ / ■ e progresso), chance contra o próximo chefe (e a liga inteira na Elite Four)
-  e a rota sugerida quando você está no mapa.
+  chance contra o próximo chefe (e a liga inteira na Elite Four) e a rota sugerida
+  quando você está no mapa, com um botão ON/OFF.
 - **Estendido**: todas as ferramentas em abas.
 
 | Aba | O que faz |
 |---|---|
-| **Caça** | Reset automático até sair um shiny, uma aurora, **um shiny que falta na sua Dex** ou um Pokémon específico. Chance por reset, histórico com estatísticas (média, melhor e pior caça) e a chance atual do **ovo lendário** com o bônus acumulado. |
 | **Luta** | Próximo chefe (inclusive cada membro da **Elite Four**), chance de vitória simulada pelo motor do jogo, melhor ordem do time e duelo de tipos. |
 | **Time** | HP, golpe de cada um, fraquezas compartilhadas, buracos de cobertura e traits. |
-| **Dex** | Progresso da Pokédex, Shiny Dex e Aurora Dex por região, **quais Pokémon do mapa atual ainda faltam**, e busca com onde cada um aparece. |
+| **Dex** | Progresso da Pokédex, Shiny Dex e Aurora Dex por região, **quais Pokémon ainda faltam** na região e no mapa atual, busca com onde cada um aparece, sua chance real de shiny e a chance atual do **ovo lendário**. |
 | **Tipos** | Tabela de tipos com 1 ou 2 tipos e quanto o seu time causa. |
 
 E dentro das telas do próprio jogo:
@@ -52,9 +53,9 @@ clica no nó, então não dá pra saber antes.
 ## Coisas do jogo que vale saber
 
 - **Shiny**: 1% por Pokémon (2% com Shiny Charm, ×2 com a passiva de shiny, ×2 no
-  desafio Aurora Hunt). O 1º nó tem 3 opções, então dá ~3% por reset.
+  desafio Aurora Hunt). O 1º nó de captura tem 3 opções, então dá ~3% por run nova.
 - **Aurora só existe no Battle Tower / Challenges**: são 10% dos shinies (20% com o
-  Aurora Charm). No Story ela nunca aparece, nem caçando.
+  Aurora Charm). No Story ela nunca aparece.
 - **Cada Pokémon ataca com um tipo só**: o primeiro tipo dele que não é Normal.
   Um Pidgey (Normal/Flying), por exemplo, só bate Flying.
 - **Traits** (Battle Tower): cada Pokémon dá 1 ponto por tipo (shiny conta 2,
@@ -73,7 +74,7 @@ A nota soma duas coisas:
    traits do tipo; boost de SPE vê se você passa a atacar antes de alguém do chefe; e assim por diante.
 
 Faixas: **S+** ≥ 14 · **S** ≥ 9 · **A** ≥ 5 · **B** ≥ 1,5 · **C** abaixo. "★ MELHOR" só
-aparece quando uma opção ganha com folga. Dá pra desligar na aba **Luta → Dicas na tela do jogo**.
+aparece quando uma opção ganha com folga. Dá pra desligar no menu de opções (⚙ no cabeçalho do painel).
 
 ## Desempenho
 
@@ -88,8 +89,6 @@ pula de lugar embaixo do mouse.
   como anti-cheat, e a extensão não mexe em nada lá.
 - As simulações salvam e restauram a seed do jogo, igual às simulações internas do
   próprio Pokelike. Elas **não mudam o resultado** das suas lutas.
-- A caça só reseta uma run vazia. Se a run já tiver progresso, ela pergunta antes.
-  Qualquer tecla ou clique seu no jogo pausa a caça na hora.
 - Tudo roda local. A extensão não manda nada pra lugar nenhum.
 
 ## Apoie

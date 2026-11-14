@@ -102,16 +102,10 @@
   // ------------------------------------------------------------- settings ---
   const SETTINGS_KEY = 'pkc:settings';
   const defaults = {
-    open: true, tab: 'hunt', x: null, y: null,
+    open: true, tab: 'fight', x: null, y: null,
     mode: 'compact',          // compact (barra com o essencial) | extended (abas completas)
     lang: 'auto',             // auto (segue o jogo) | pt | en
     routeAdvisor: true,       // trilha sugerida no mapa
-    huntTarget: 'shiny',      // shiny | aurora | species
-    huntSpecies: '',          // lista separada por vírgula
-    huntSpeciesNeedShiny: true,
-    huntDelay: 150,
-    huntMax: 2000,
-    huntSound: true,
     sims: 300,
     catchAdvisor: true,
     choiceAdvisor: true,      // notas S+..C em relíquias, itens e boosts
@@ -119,11 +113,6 @@
   let cfg = { ...defaults };
   try { cfg = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch { /* ignore */ }
   const saveCfg = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(cfg)); } catch { /* ignore */ } };
-
-  const STATS_KEY = 'pkc:huntlog';
-  let huntLog = [];
-  try { huntLog = JSON.parse(localStorage.getItem(STATS_KEY) || '[]'); } catch { huntLog = []; }
-  const saveLog = () => { try { localStorage.setItem(STATS_KEY, JSON.stringify(huntLog.slice(-50))); } catch { /* ignore */ } };
 
   // ---------------------------------------------------------- type helpers ---
   function teamDefense(team) {
@@ -366,8 +355,12 @@
     return { best: top[0], current, tried: all.length };
   }
 
-  // --------------------------------------------------------------- hunter ---
-  const hunt = { confirmedReset: false, running: false, attempts: 0, t0: 0, msg: '', lastSeen: '', found: null };
+  // -------------------------------------------------------------- módulos ---
+  // Módulos opcionais (ex.: uma ferramenta pessoal) se registram com window.__pkc.use({...}).
+  // Cada um pode trazer: defaults, tab {id, label, view}, compactRow(), badge(), actions,
+  // onTick(), busy() (pausa as dicas enquanto true).
+  const plugins = [];
+  const busy = () => plugins.some(p => { try { return !!(p.busy && p.busy()); } catch { return false; } });
 
   function shinyOdds() {
     const s = S();
@@ -380,172 +373,12 @@
     return { p, aur };
   }
 
-  function speciesList() {
-    return cfg.huntSpecies.split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
-  }
-
-  function isHit(inst) {
-    if (!inst) return false;
-    if (cfg.huntTarget === 'aurora') return !!inst.isAurora;
-    if (cfg.huntTarget === 'newshiny') {
-      const d = dexes();
-      if (inst.isAurora) return !inDex(d.aurora, inst.speciesId) || !inDex(d.shiny, inst.speciesId);
-      return !!inst.isShiny && !inDex(d.shiny, inst.speciesId);
-    }
-    if (cfg.huntTarget === 'species') {
-      const list = speciesList();
-      const name = String(inst.name || '').toLowerCase();
-      const okName = list.some(n => name === n || name.startsWith(n));
-      return okName && (!cfg.huntSpeciesNeedShiny || inst.isShiny || inst.isAurora);
-    }
-    return !!(inst.isShiny || inst.isAurora);
-  }
-
   function currentCatchInstances() {
     const s = S();
     if (screenId() !== 'catch-screen' || !s || !s.savedCatch || !Array.isArray(s.savedCatch.instances)) return null;
     if (s.currentNode && s.savedCatch.nodeId !== s.currentNode.id) return null;
     return s.savedCatch.instances;
   }
-
-  function firstCatchNode() {
-    const s = S();
-    if (!s || !s.map) return null;
-    const acc = window.getAccessibleNodes(s.map).sort((a, b) => a.layer - b.layer || a.col - b.col);
-    return acc.find(n => n.type === 'catch') || null;
-  }
-
-  /** Run recém-começada: só o inicial e no máximo o 1º nó visitado. Resetar não perde nada. */
-  function runIsFresh() {
-    const s = S();
-    if (!s || !s.map) return false;
-    // Mesma regra que o jogo usa pra pular a confirmação do R ("run vazia").
-    try { if (fn('isRunEmpty')) return !!window.isRunEmpty(); } catch { /* cai no fallback */ }
-    const visited = Object.values(s.map.nodes).filter(n => n.visited && n.type !== 'start');
-    return (s.currentMap || 0) === 0 && s.team.length <= 1 && visited.length === 0;
-  }
-
-  async function clickNodeAndWait(node) {
-    // Não dá await no onNodeClick: ele pode ficar esperando a sua escolha na tela.
-    Promise.resolve(window.onNodeClick(node)).catch(e => console.warn('[Pokelike Companion] onNodeClick', e));
-    return waitFor(() => currentCatchInstances() && S().savedCatch.nodeId === node.id, 15000);
-  }
-
-  function stopHunt(msg) {
-    hunt.running = false;
-    if (msg) hunt.msg = msg;
-    render();
-  }
-
-  async function startHunt() {
-    if (hunt.running) return;
-    const b = blocked();
-    if (b) { hunt.msg = b; render(); return; }
-    const s = S();
-    if (!s.starterSpeciesId) { hunt.msg = L('Comece uma run (escolha o inicial) antes de caçar.', 'Start a run (pick your starter) before hunting.'); render(); return; }
-    if (cfg.huntTarget === 'aurora' && !s.isEndlessMode) {
-      hunt.msg = L('Aurora só aparece no Battle Tower / Challenges. No Story ela nunca sai — escolha "Shiny".', 'Aurora only exists in Battle Tower / Challenges. It never shows up in Story — pick "Shiny".');
-      render(); return;
-    }
-    if (cfg.huntTarget === 'species' && !speciesList().length) { hunt.msg = L('Digite pelo menos um nome de Pokémon.', 'Type at least one Pokémon name.'); render(); return; }
-    if (!runIsFresh() && !window.confirm(
-      L(`A caça reseta a run, e a sua já tem progresso (${s.team.length} Pokémon no time) — ele será perdido. Continuar?`,
-        `Hunting resets the run, and yours already has progress (${s.team.length} Pokémon on the team) — it will be lost. Continue?`))) {
-      return;
-    }
-    hunt.confirmedReset = !runIsFresh();
-    hunt.running = true; hunt.attempts = 0; hunt.t0 = Date.now(); hunt.msg = L('Caçando…', 'Hunting…'); hunt.found = null;
-    render();
-    try {
-      await huntLoop();
-    } catch (e) {
-      console.error('[Pokelike Companion] hunt', e);
-      stopHunt(L('Erro: ', 'Error: ') + (e && e.message || e));
-    }
-  }
-
-  async function huntLoop() {
-    while (hunt.running) {
-      const b = blocked();
-      if (b) return stopHunt(b);
-      // 1) Se já estamos numa tela de captura, confere antes de resetar (nunca joga fora um shiny visível).
-      const inst = currentCatchInstances();
-      if (inst) {
-        hunt.lastSeen = inst.map(i => (i.isAurora ? '🌈' : i.isShiny ? '✨' : '') + i.name).join(', ');
-        const hit = inst.find(isHit);
-        if (hit) return onFound(hit, inst);
-      } else if (screenId() === 'map-screen' && runIsFresh()) {
-        // Run nova ainda no mapa: olha o nó de captura antes de resetar.
-        const node = firstCatchNode();
-        if (node && node.layer === 1) {
-          if (!(await clickNodeAndWait(node))) return stopHunt(L('A tela de captura não abriu — parei por segurança.', "The catch screen didn't open — stopped to be safe."));
-          continue;
-        }
-      }
-      if (!runIsFresh() && !hunt.confirmedReset) return stopHunt(L('A run avançou (você capturou ou andou no mapa) — caça parada.', 'The run moved on (you caught something or moved on the map) — hunt stopped.'));
-      hunt.confirmedReset = false;
-      if (hunt.attempts >= cfg.huntMax) return stopHunt(L(`Limite de ${cfg.huntMax} tentativas atingido.`, `Reached the ${cfg.huntMax}-attempt limit.`));
-
-      // 2) Reset da run (mesmo efeito da tecla R, sem o modal de confirmação).
-      const s = S();
-      const oldSeed = s.runSeed;
-      window.executeResetRun();
-      const ok = await waitFor(() => {
-        const ns = S();
-        return ns && ns.runSeed !== oldSeed && ns.map && screenId() === 'map-screen' && !document.getElementById('reset-loading-overlay');
-      }, 20000);
-      if (!hunt.running) return;
-      if (!ok) return stopHunt(L('O reset demorou demais — parei por segurança.', 'The reset took too long — stopped to be safe.'));
-      hunt.attempts++;
-      render();
-
-      // 3) Clica no primeiro nó de captura disponível (o da esquerda).
-      const node = firstCatchNode();
-      if (!node) { await sleep(cfg.huntDelay); continue; }
-      const got = await clickNodeAndWait(node);
-      if (!hunt.running) return;
-      if (!got) return stopHunt(L('A tela de captura não abriu — parei por segurança.', "The catch screen didn't open — stopped to be safe."));
-      if (cfg.huntDelay) await sleep(cfg.huntDelay);
-    }
-  }
-
-  function onFound(hit, inst) {
-    const kind = hit.isAurora ? 'AURORA' : hit.isShiny ? 'SHINY' : L('Alvo', 'Target');
-    hunt.found = { name: hit.name, kind };
-    huntLog.push({ at: Date.now(), name: hit.name, kind, attempts: hunt.attempts, secs: Math.round((Date.now() - hunt.t0) / 1000) });
-    saveLog();
-    stopHunt(L(`${kind} encontrado: ${hit.name} (tentativa ${hunt.attempts}). Escolha ele na tela!`, `${kind} found: ${hit.name} (attempt ${hunt.attempts}). Pick it on screen!`));
-    alertUser(`${kind}: ${hit.name}`);
-    highlightCatchCards();
-  }
-
-  function alertUser(text) {
-    if (cfg.huntSound) {
-      try {
-        const ac = new (window.AudioContext || window.webkitAudioContext)();
-        [0, 0.18, 0.36].forEach((t, i) => {
-          const o = ac.createOscillator(), g = ac.createGain();
-          o.frequency.value = [880, 1175, 1568][i];
-          g.gain.setValueAtTime(0.15, ac.currentTime + t);
-          g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + t + 0.16);
-          o.connect(g); g.connect(ac.destination);
-          o.start(ac.currentTime + t); o.stop(ac.currentTime + t + 0.17);
-        });
-      } catch { /* ignore */ }
-    }
-    try { if (window.Notification && Notification.permission === 'granted') new Notification('Pokelike Companion', { body: text }); } catch { /* ignore */ }
-    const orig = document.title; let n = 0;
-    const iv = setInterval(() => { document.title = (n++ % 2) ? orig : '✨ ' + text; if (n > 20) { clearInterval(iv); document.title = orig; } }, 700);
-  }
-
-  // Qualquer tecla/clique real fora do painel interrompe a caça (você retoma o controle na hora).
-  const interrupt = e => {
-    if (!hunt.running || !e.isTrusted) return;
-    if (root && root.contains(e.target)) return;
-    stopHunt(L('Caça pausada (você interagiu com o jogo).', 'Hunt paused (you touched the game).'));
-  };
-  window.addEventListener('keydown', interrupt, true);
-  window.addEventListener('pointerdown', interrupt, true);
 
   // --------------------------------------------------------- catch advisor ---
   let advisorKey = null;
@@ -600,7 +433,7 @@
       box.className = 'pkc-advice';
       return box;
     });
-    const boss = hunt.running ? null : await nextBoss();
+    const boss = busy() ? null : await nextBoss();
     const simLine = i => `<span class="pkc-sim" data-i="${i}">${boss ? `vs ${esc(boss.name)}: <small class="pkc-muted">${L('calculando…', 'calculating…')}</small>` : ''}</span>`;
     boxes.forEach((box, i) => { box.innerHTML = staticLines[i].join('<br>') + (boss ? '<br>' + simLine(i) : ''); });
     equalizeHeights(boxes);
@@ -635,7 +468,7 @@
    * Card que pula de lugar embaixo do mouse = clique no lugar errado.
    */
   function reserveAdviceSpace() {
-    if (hunt.running || blocked()) return;
+    if (busy() || blocked()) return;
     if (cfg.catchAdvisor) {
       for (const w of document.querySelectorAll('#catch-choices .poke-choice-wrap')) {
         if (!w.querySelector('.pkc-advice')) {
@@ -1083,7 +916,7 @@
 
   let choiceKey = null;
   async function choiceAdvisor() {
-    if (!cfg.choiceAdvisor || blocked() || hunt.running) return;
+    if (!cfg.choiceAdvisor || blocked() || busy()) return;
     const s = S();
     if (!s || !s.team || !s.team.length) return;
     const scr = screenId();
@@ -1347,7 +1180,7 @@
   let routeKey = null;
   function routeAdvisor() {
     const s = S();
-    if (!cfg.routeAdvisor || hunt.running || blocked() || screenId() !== 'map-screen' || !s || !s.map) return;
+    if (!cfg.routeAdvisor || busy() || blocked() || screenId() !== 'map-screen' || !s || !s.map) return;
     const key = bossKey() + '|' + Object.values(s.map.nodes).filter(n => n.visited).length + '|' + s.team.map(m => `${m._uid}:${m.currentHp}`).join(',');
     const svg = document.querySelector('#map-screen svg');
     if (key !== routeKey) { routeKey = key; ui.route = planRoute(); if (compact() || cfg.tab === 'fight') renderBody(); }
@@ -1593,18 +1426,6 @@
     return { maps, tower };
   }
 
-  function huntStats() {
-    if (!huntLog.length) return null;
-    const r = huntLog.map(h => h.attempts);
-    return {
-      n: huntLog.length,
-      aurora: huntLog.filter(h => h.kind === 'AURORA').length,
-      avg: Math.round(r.reduce((a, b) => a + b, 0) / r.length),
-      best: Math.min(...r), worst: Math.max(...r),
-      mins: Math.round(huntLog.reduce((a, h) => a + (h.secs || 0), 0) / 60),
-    };
-  }
-
   // -------------------------------------------------------------------- UI ---
   let root = null;
   const ui = { boss: null, bossWin: null, order: null, orderProgress: null, orderBusy: false, defA: '', defB: '', lastSig: '' };
@@ -1632,15 +1453,13 @@
       else { cfg.open = !cfg.open; forcedOpenOn = null; saveCfg(); }
       render();
     }
-    else if (act === 'tab') { cfg.tab = el.dataset.tab; saveCfg(); render(); refreshTab(true); }
+    else if (act === 'tab') { cfg.tab = el.dataset.tab; ui.opts = false; saveCfg(); render(); refreshTab(true); }
     else if (act === 'mode') { cfg.mode = compact() ? 'extended' : 'compact'; saveCfg(); render(); refreshTab(false); }
-    else if (act === 'hunt-start') startHunt();
-    else if (act === 'hunt-stop') stopHunt(L('Caça parada.', 'Hunt stopped.'));
-    else if (act === 'notif') { try { Notification.requestPermission().then(render); } catch { /* ignore */ } }
-    else if (act === 'clear-log') { huntLog = []; saveLog(); render(); }
+    else if (act === 'opts') { ui.opts = !ui.opts; render(); }
     else if (act === 'sim') { bossCache.key = null; refreshTab(true); }
     else if (act === 'order') runOrder();
     else if (act === 'route-toggle') setRoute(!cfg.routeAdvisor);
+    else for (const p of plugins) if (p.actions && p.actions[act]) { p.actions[act](el, e); break; }
   }
 
   function setRoute(on) {
@@ -1716,14 +1535,17 @@
 
   function render() {
     if (!root) return;
-    const tabs = [['hunt', L('Caça', 'Hunt')], ['fight', L('Luta', 'Fight')], ['team', L('Time', 'Team')], ['dex', 'Dex'], ['types', L('Tipos', 'Types')]];
+    const tabs = plugins.filter(p => p.tab).map(p => [p.tab.id, p.tab.label()])
+      .concat([['fight', L('Luta', 'Fight')], ['team', L('Time', 'Team')], ['dex', 'Dex'], ['types', L('Tipos', 'Types')]]);
+    if (!tabs.some(([id]) => id === cfg.tab)) cfg.tab = 'fight';
     const open = isOpen();
     root.className = (open ? 'pkc-open' : 'pkc-closed') + (compact() ? ' pkc-compact' : ' pkc-extended');
     root.innerHTML = `
       <div class="pkc-head">
         <span class="pkc-ball" aria-hidden="true"><img src="img/sprites/items/ultra-ball.png" alt="" onerror="this.remove()"></span>
         <span class="pkc-title">COMPANION</span>
-        ${hunt.running ? `<span class="pkc-live">${L('CAÇANDO', 'HUNTING')}</span>` : ''}
+        ${plugins.map(p => (p.badge && p.badge()) || '').join('')}
+        ${open ? `<button class="pkc-x pkc-opts${ui.opts ? ' on' : ''}" data-act="opts" title="${L('Opções', 'Options')}">⚙&#xFE0E;</button>` : ''}
         ${open ? `<button class="pkc-x pkc-mode" data-act="mode" title="${compact() ? L('Modo estendido: todas as ferramentas', 'Extended mode: every tool') : L('Modo compacto: só o essencial', 'Compact mode: just the essentials')}">${compact() ? '⤢' : '⤡'}</button>` : ''}
         <button class="pkc-x" data-act="toggle" title="${L('Abrir/fechar', 'Open/close')}">${open ? '–' : '+'}</button>
       </div>
@@ -1740,7 +1562,7 @@
    */
   /** Linha "ROTA … ON/OFF": aparece no mapa, nos dois modos do painel. */
   function routeRow() {
-    if (screenId() !== 'map-screen' || hunt.running || !S() || !S().map) return '';
+    if (screenId() !== 'map-screen' || busy() || !S() || !S().map) return '';
     const tog = `<button class="pkc-mini pkc-mini-tog${cfg.routeAdvisor ? '' : ' off'}" data-act="route-toggle" title="${cfg.routeAdvisor ? L('Esconder a rota sugerida', 'Hide the suggested route') : L('Mostrar a rota sugerida', 'Show the suggested route')}">${cfg.routeAdvisor ? 'ON' : 'OFF'}</button>`;
     if (!cfg.routeAdvisor) return `<div class="pkc-crow"><span class="pkc-clbl">${L('ROTA', 'ROUTE')}</span><span class="pkc-cval pkc-muted">${L('desligada', 'off')}</span>${tog}</div>`;
     const labels = ui.route && ui.route.labels.length ? ui.route.labels.map(esc).join(' › ') : '…';
@@ -1752,21 +1574,7 @@
     const b = blocked();
     if (b) return `<div class="pkc-crow pkc-muted">${esc(b.split(':')[0])}: ${L('desligado', 'off')}</div>`;
     const rows = [];
-    // caça
-    if (hunt.running) {
-      const { p, aur } = shinyOdds();
-      const k = s && s.nuzlockeMode ? 1 : 3;
-      const per = 1 - Math.pow(1 - (cfg.huntTarget === 'aurora' ? p * aur : p), k);
-      rows.push(`<div class="pkc-crow"><span class="pkc-clbl">${L('CAÇA', 'HUNT')}</span><span class="pkc-cval">${hunt.attempts} resets · ${pct(1 - Math.pow(1 - per, hunt.attempts))}</span>
-        <button class="pkc-mini pkc-mini-stop" data-act="hunt-stop" title="${L('Parar a caça', 'Stop hunting')}">■</button></div>`);
-    } else if (hunt.found) {
-      rows.push(`<div class="pkc-crow pkc-found"><span class="pkc-clbl">${L('ACHOU', 'FOUND')}</span><span class="pkc-cval">${hunt.found.kind === 'AURORA' ? '🌈' : '✨'} ${esc(hunt.found.name)}</span>
-        <button class="pkc-mini" data-act="hunt-start" title="${L('Caçar de novo', 'Hunt again')}">▶</button></div>`);
-    } else {
-      rows.push(`<div class="pkc-crow"><span class="pkc-clbl">${L('CAÇA', 'HUNT')}</span><span class="pkc-cval pkc-muted">${esc(huntTargetLabel())}</span>
-        <button class="pkc-mini" data-act="hunt-start" title="${L('Começar a caça', 'Start hunting')}">▶</button></div>`);
-      if (hunt.msg) rows.push(`<div class="pkc-crow pkc-cnote">${esc(hunt.msg)}</div>`);
-    }
+    for (const p of plugins) { const r = p.compactRow && p.compactRow(); if (r) rows.push(r); }
     // chefe
     if (s && s.team && s.team.length && ui.boss) {
       const w = ui.bossWin;
@@ -1777,96 +1585,35 @@
     }
     // rota
     const rr = routeRow(); if (rr) rows.push(rr);
+    if (!rows.length) return `<div class="pkc-crow pkc-cnote">${L('Comece uma run para ver as previsões.', 'Start a run to see predictions.')}</div>`;
     return rows.slice(0, 4).join('');
   }
 
   const shortName = n => { const t = String(n || L('CHEFE', 'BOSS')); return (t.length > 10 ? t.slice(0, 9) + '…' : t).toUpperCase(); };
-  function huntTargetLabel() {
-    const a = L('alvo: ', 'target: ');
-    if (cfg.huntTarget === 'aurora') return a + 'Aurora';
-    if (cfg.huntTarget === 'newshiny') return a + L('shiny novo na Dex', 'shiny missing from Dex');
-    if (cfg.huntTarget === 'species') return a + (cfg.huntSpecies || '—');
-    return a + 'Shiny';
-  }
-
   function renderBody() {
     const body = root && root.querySelector('.pkc-body');
     if (!body) return;
+    if (ui.opts) { body.innerHTML = optionsView(); return; }
     if (compact()) { body.innerHTML = compactView(); return; }
     const b = blocked();
     if (b && cfg.tab !== 'types' && cfg.tab !== 'dex') { body.innerHTML = `<p class="pkc-muted">${esc(b)}</p>`; return; }
-    if (cfg.tab === 'hunt') body.innerHTML = huntView();
+    const pt = plugins.find(p => p.tab && p.tab.id === cfg.tab);
+    if (pt) body.innerHTML = pt.tab.view();
     else if (cfg.tab === 'fight') body.innerHTML = fightView();
     else if (cfg.tab === 'team') body.innerHTML = teamView();
     else if (cfg.tab === 'dex') body.innerHTML = dexView();
     else body.innerHTML = typesView();
   }
 
-  function huntView() {
-    const s = S();
+  function oddsLine() {
     const { p, aur } = shinyOdds();
-    const k = s && s.nuzlockeMode ? 1 : 3;
-    const pTarget = cfg.huntTarget === 'aurora' ? p * aur : p;
-    const perReset = 1 - Math.pow(1 - pTarget, k);
-    const expected = perReset > 0 ? Math.round(1 / perReset) : Infinity;
-    const secs = hunt.running || hunt.attempts ? Math.round((Date.now() - hunt.t0) / 1000) : 0;
-    const chanceSoFar = 1 - Math.pow(1 - perReset, hunt.attempts);
-    const opt = (v, label) => `<option value="${v}" ${cfg.huntTarget === v ? 'selected' : ''}>${label}</option>`;
-    return `
-      <label>${L('Alvo', 'Target')}
-        <select data-cfg="huntTarget">
-          ${opt('shiny', L('Shiny (ou Aurora)', 'Shiny (or Aurora)'))}
-          ${opt('aurora', L('Só Aurora', 'Aurora only'))}
-          ${opt('newshiny', L('Shiny que falta na minha Dex', 'Shiny missing from my Dex'))}
-          ${opt('species', L('Pokémon específico', 'Specific Pokémon'))}
-        </select>
-      </label>
-      ${cfg.huntTarget === 'species' ? `
-        <label>${L('Nomes (separados por vírgula)', 'Names (comma-separated)')}<input data-cfg="huntSpecies" value="${esc(cfg.huntSpecies)}" placeholder="abra, dratini"></label>
-        <label class="pkc-check"><input type="checkbox" data-cfg="huntSpeciesNeedShiny" ${cfg.huntSpeciesNeedShiny ? 'checked' : ''}> ${L('precisa ser shiny', 'must be shiny')}</label>` : ''}
-      <div class="pkc-row">
-        <label>${L('Pausa (ms)', 'Delay (ms)')}<input type="number" min="0" max="5000" step="50" data-cfg="huntDelay" value="${cfg.huntDelay}"></label>
-        <label>${L('Máx. tentativas', 'Max attempts')}<input type="number" min="1" max="100000" data-cfg="huntMax" value="${cfg.huntMax}"></label>
-      </div>
-      <label class="pkc-check"><input type="checkbox" data-cfg="huntSound" ${cfg.huntSound ? 'checked' : ''}> ${L('som ao achar', 'sound when found')}</label>
-      ${window.Notification && Notification.permission === 'default' ? `<button class="pkc-link" data-act="notif">${L('ativar notificação do navegador', 'enable browser notification')}</button>` : ''}
-      <div class="pkc-row">
-        ${hunt.running
-          ? `<button class="pkc-btn pkc-stop" data-act="hunt-stop">${L('Parar', 'Stop')}</button>`
-          : `<button class="pkc-btn" data-act="hunt-start" title="${L('Aperte qualquer tecla ou clique no jogo para pausar', 'Press any key or click the game to pause')}">${L('Começar caça', 'Start hunt')}</button>`}
-      </div>
-      <div class="pkc-dialog ${hunt.found ? 'pkc-dialog-found' : ''}">
-        <div>${L('Chance por reset', 'Chance per reset')}: <b>${(perReset * 100).toFixed(2)}%</b> <small>(~${expected} ${L('resets em média', 'resets on average')})</small></div>
-        <div>${L('Shiny base', 'Base shiny')}: ${(p * 100).toFixed(1)}% ${L('por Pokémon', 'per Pokémon')}${aur ? ` · Aurora: ${Math.round(aur * 100)}% ${L('dos shinies', 'of shinies')}` : ` · Aurora: ${L('só no Battle Tower', 'Battle Tower only')}`}</div>
-        ${hunt.attempts ? `
-          <div class="pkc-meter"><span class="pkc-meter-lbl">RESETS</span><b>${hunt.attempts}</b><span class="pkc-meter-sub">${secs}s</span></div>
-          <div class="pkc-bar pkc-bar-exp" title="${L('Chance de já ter saído um alvo até agora', 'Chance a target should have shown up by now')}"><span style="width:${Math.round(chanceSoFar * 100)}%"></span></div>
-          <div class="pkc-meter-sub">${L(`Já devia ter saído com ${pct(chanceSoFar)} de chance`, `${pct(chanceSoFar)} chance it should have shown up by now`)}</div>` : ''}
-        ${hunt.lastSeen ? `<div class="pkc-muted">${L('Último', 'Last')}: ${esc(hunt.lastSeen)}</div>` : ''}
-        ${hunt.msg ? `<div class="pkc-msg ${hunt.found ? 'pkc-found' : ''}">${esc(hunt.msg)}</div>` : ''}
-        <span class="pkc-next" aria-hidden="true">▼</span>
-      </div>
-      ${eggLine()}
-      ${huntLog.length ? `<details><summary>${L('Histórico', 'History')} (${huntLog.length})</summary>${statsLine()}
-        <ul class="pkc-log">${huntLog.slice().reverse().map(h => `<li>${h.kind === 'AURORA' ? '🌈' : '✨'} ${esc(h.name)} — ${h.attempts} resets, ${h.secs}s <small>${new Date(h.at).toLocaleString()}</small></li>`).join('')}</ul>
-        <button class="pkc-link" data-act="clear-log">${L('limpar', 'clear')}</button></details>` : ''}`;
+    return `<div class="pkc-kv"><span class="pkc-lbl">${L('CHANCE SHINY', 'SHINY ODDS')}</span><span>${(p * 100).toFixed(1)}% ${L('por Pokémon', 'per Pokémon')}${aur ? ` · Aurora ${Math.round(aur * 100)}% ${L('dos shinies', 'of shinies')}` : ` <small>(Aurora: ${L('só no Battle Tower', 'Battle Tower only')})</small>`}</span></div>`;
   }
-
   function eggLine() {
     let pity = 0, chance = null;
     try { pity = window.getLegendaryShinyPity(); chance = window.legendaryShinyChanceNow(); } catch { return ''; }
     return `<div class="pkc-kv"><span class="pkc-lbl">${L('OVO LENDÁRIO', 'LEGENDARY EGG')}</span><span>${(chance * 100).toFixed(1)}% ${L('de shiny no próximo', 'shiny on the next one')}${pity ? ` <small>(${pity} ${L('sem shiny acumulados', 'non-shiny banked')})</small>` : ''}</span></div>`;
   }
-  function statsLine() {
-    const st = huntStats();
-    if (!st) return '';
-    return `<div class="pkc-statgrid">
-      <div><b>${st.n}</b><span>${L('achados', 'found')}${st.aurora ? ` (${st.aurora} 🌈)` : ''}</span></div>
-      <div><b>${st.avg}</b><span>${L('resets em média', 'avg resets')}</span></div>
-      <div><b>${st.best}–${st.worst}</b><span>${L('melhor–pior', 'best–worst')}</span></div>
-      <div><b>${st.mins}</b><span>${L('min caçando', 'min hunting')}</span></div></div>`;
-  }
-
   function dexView() {
     const d = dexes();
     if (ui.dexRegion == null) ui.dexRegion = currentRegionIdx();
@@ -1876,7 +1623,8 @@
     const bar = (label, n, cls) => `<div class="pkc-dexrow"><span class="pkc-lbl">${label}</span>
       <div class="pkc-bar ${cls}"><span style="width:${Math.round(n / total * 100)}%"></span></div><b>${n}/${total}</b></div>`;
     let h = `<label>${L('Região', 'Region')}<select data-ui="dexRegion">${REGIONS.map(([n], i) => `<option value="${i}" ${i === ui.dexRegion ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-      ${bar('POKÉDEX', count(d.dex), 'pkc-bar-dex')}${bar('SHINY', count(d.shiny), 'pkc-bar-shiny')}${bar('AURORA', count(d.aurora), 'pkc-bar-aurora')}`;
+      ${bar('POKÉDEX', count(d.dex), 'pkc-bar-dex')}${bar('SHINY', count(d.shiny), 'pkc-bar-shiny')}${bar('AURORA', count(d.aurora), 'pkc-bar-aurora')}
+      ${oddsLine()}${eggLine()}`;
     const monCell = id => {
       const got = inDex(d.dex, id), sh = inDex(d.shiny, id);
       const tip = `${speciesName(id)} · ${got ? L('na Dex', 'in Dex') : L('falta na Dex', 'missing from Dex')} · ${sh ? 'shiny ✔' : L('falta shiny', 'shiny missing')}`;
@@ -1917,7 +1665,7 @@
 
   function fightView() {
     const s = S();
-    if (!s || !s.team || !s.team.length) return `<p class="pkc-muted">${L('Comece uma run para ver as previsões.', 'Start a run to see predictions.')}</p>` + optionsBlock();
+    if (!s || !s.team || !s.team.length) return `<p class="pkc-muted">${L('Comece uma run para ver as previsões.', 'Start a run to see predictions.')}</p>` ;
     const boss = ui.boss;
     const rr = routeRow();
     let h = rr ? `<div class="pkc-route-ext">${rr}</div>` : '';
@@ -1959,20 +1707,20 @@
       });
       h += `<details open><summary>${L('Duelo de tipos', 'Type matchups')}</summary><ul class="pkc-list">${threats.join('')}</ul></details>`;
     }
-    return h + optionsBlock();
+    return h ;
   }
 
   /** Opções: idioma, dicas na tela do jogo e rota no mapa. */
-  function optionsBlock() {
+  function optionsView() {
     const sel = (v, label) => `<option value="${v}" ${(cfg.lang || 'auto') === v ? 'selected' : ''}>${label}</option>`;
-    return `<details><summary>${L('Opções', 'Options')}</summary>
+    return `<div class="pkc-optview"><div class="pkc-sect"><span class="pkc-lbl">${L('OPÇÕES', 'OPTIONS')}</span><button class="pkc-link" data-act="opts">${L('fechar', 'close')}</button></div>
       <label>${L('Idioma', 'Language')}<select data-cfg="lang">
         ${sel('auto', L('Igual ao jogo', 'Same as the game'))}${sel('pt', 'Português')}${sel('en', 'English')}</select></label>
       <label class="pkc-check"><input type="checkbox" data-cfg="catchAdvisor" ${cfg.catchAdvisor ? 'checked' : ''}> ${L('dicas na captura', 'tips on the catch screen')}</label>
       <label class="pkc-check"><input type="checkbox" data-cfg="choiceAdvisor" ${cfg.choiceAdvisor ? 'checked' : ''}> ${L('notas S+ a C (relíquias, itens, boosts, troca, tutor, chefe)', 'S+ to C grades (relics, items, boosts, swaps, tutor, boss)')}</label>
       <label class="pkc-check"><input type="checkbox" data-cfg="routeAdvisor" ${cfg.routeAdvisor ? 'checked' : ''}> ${L('rota sugerida no mapa', 'suggested route on the map')}</label>
       <p class="pkc-muted">${L('S+ ≥ 14 · S ≥ 9 · A ≥ 5 · B ≥ 1,5 · C abaixo. Os pontos somam a simulação contra o próximo chefe e a sinergia com o seu time. Se a luta for fácil ou difícil demais, a simulação aumenta a vida de um dos lados até ficar perto de 50%, pra conseguir medir a diferença entre as opções.',
-        "S+ ≥ 14 · S ≥ 9 · A ≥ 5 · B ≥ 1.5 · C below. Points combine a simulation against the next boss with synergy with your team. If the fight is too easy or too hard, the simulation adds HP to one side until it's near 50%, so the options can be told apart.")}</p></details>`;
+        "S+ ≥ 14 · S ≥ 9 · A ≥ 5 · B ≥ 1.5 · C below. Points combine a simulation against the next boss with synergy with your team. If the fight is too easy or too hard, the simulation adds HP to one side until it's near 50%, so the options can be told apart.")}</p></div>`;
   }
 
   function teamView() {
@@ -2058,7 +1806,7 @@
   let fightJob = null;
   async function refreshTab(force) {
     if (!isOpen()) return;
-    if ((compact() || cfg.tab === 'fight') && !blocked() && !hunt.running) {
+    if ((compact() || cfg.tab === 'fight') && !blocked() && !busy()) {
       const s = S();
       if (s && s.team && s.team.length) {
         const prev = ui.boss;
@@ -2106,18 +1854,18 @@
           if (prep) prep.remove();
           prepKey = null;
         }
-        if (!hunt.running) refreshTab(false).catch(e => console.warn('[Pokelike Companion] refresh', e));
+        if (!busy()) refreshTab(false).catch(e => console.warn('[Pokelike Companion] refresh', e));
       }
-      if (hunt.running && cfg.tab === 'hunt') renderBody();
+      for (const p of plugins) if (p.onTick) { try { p.onTick(); } catch (e) { console.warn('[Pokelike Companion] módulo', e); } }
       const scr = screenId();
-      if (!hunt.running && ['item-screen', 'passive-screen', 'stat-buff-screen'].includes(scr)) runAdvisor(choiceAdvisor);
-      if (!hunt.running && scr === 'elite-prep-screen') runAdvisor(prepAdvisor);
-      if (!hunt.running && scr === 'swap-screen') runAdvisor(swapAdvisor);
-      if (!hunt.running && document.querySelector('#item-equip-modal button[data-tutor]')) runAdvisor(tutorAdvisor);
-      if (!hunt.running && document.getElementById('item-equip-modal')) equipHint();
+      if (!busy() && ['item-screen', 'passive-screen', 'stat-buff-screen'].includes(scr)) runAdvisor(choiceAdvisor);
+      if (!busy() && scr === 'elite-prep-screen') runAdvisor(prepAdvisor);
+      if (!busy() && scr === 'swap-screen') runAdvisor(swapAdvisor);
+      if (!busy() && document.querySelector('#item-equip-modal button[data-tutor]')) runAdvisor(tutorAdvisor);
+      if (!busy() && document.getElementById('item-equip-modal')) equipHint();
       if (scr === 'map-screen') routeAdvisor();
       if (screenId() === 'catch-screen') {
-        if (hunt.running) highlightCatchCards(); else runAdvisor(catchAdvisor);
+        if (busy()) highlightCatchCards(); else runAdvisor(catchAdvisor);
       }
     } catch (e) {
       console.warn('[Pokelike Companion] tick', e);
@@ -2125,6 +1873,23 @@
       ticking = false;
     }
   }
+
+  // ---------------------------------------------------------- API de módulos ---
+  window.__pkc = {
+    version: 1,
+    use(p) {
+      if (!p || plugins.includes(p)) return;
+      if (p.defaults) for (const [k, v] of Object.entries(p.defaults)) if (!(k in cfg)) cfg[k] = v;
+      plugins.push(p);
+      try { p.init && p.init(); } catch (e) { console.warn('[Pokelike Companion] módulo', e); }
+      render();
+    },
+    get cfg() { return cfg; }, get root() { return root; },
+    saveCfg, L, esc, pct, S, fn, sleep, waitFor, blocked, screenId,
+    render: () => render(), renderBody: () => renderBody(),
+    shinyOdds, currentCatchInstances, highlightCatchCards, dexes, inDex, isOpen,
+  };
+  window.dispatchEvent(new Event('pkc:ready'));
 
   // ------------------------------------------------------------------ boot ---
   (async () => {

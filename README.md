@@ -4,9 +4,10 @@
 
 A free browser extension (Chrome, Edge, Brave, Opera) that adds a helper panel to
 [Pokelike](https://pokelike.xyz): boss win chances simulated with the game's own engine, S+ to C grades
-for your choices, a Dex tracker, a suggested map route and an optional shiny auto-reroll.
+for your choices, a Dex tracker and a suggested map route.
 
-**Unofficial fan project** — not affiliated with Pokelike, Nintendo, Game Freak or The Pokémon Company.
+**Unofficial fan project**, shared with the Pokelike developer's OK. Not affiliated with Pokelike, Nintendo,
+Game Freak or The Pokémon Company.
 
 ![Boss prep screen with win chance and suggested order](docs/screenshots/4-boss-prep.png)
 
@@ -21,11 +22,11 @@ To update: replace the files in the same folder, click ↻ on the extension card
 
 ## What it does
 
-The panel has two modes (⤢ button in its header):
+The panel has two modes (⤢ button in its header) and an options menu (⚙ button):
 
-- **Compact** (default): up to 3 lines that change with the screen — hunt (▶/■ and progress), win chance
-  against the next boss (plus the whole league on the Elite Four) and the suggested route on the map.
-- **Extended**: every tool, in tabs (Hunt, Fight, Team, Dex, Types).
+- **Compact** (default): up to 3 lines that change with the screen: win chance against the next boss
+  (plus the whole league on the Elite Four) and the suggested route on the map, with an ON/OFF switch.
+- **Extended**: every tool, in tabs (Fight, Team, Dex, Types).
 
 Inside the game's own screens:
 
@@ -42,13 +43,8 @@ Inside the game's own screens:
 ![Catch tips](docs/screenshots/2-catch-tips.png)
 ![Map route and compact panel](docs/screenshots/1-map-route-compact.png)
 
-**Hunt tab** — optional shiny auto-reroll: it does what you'd do by hand (R + the left catch node) and stops
-by itself on a shiny, an aurora, a **shiny missing from your Dex** or a specific Pokémon. Any key press or
-click in the game pauses it. Also shows the real odds, your hunt history and the legendary egg's current
-shiny chance.
-
-**Dex tab** — Pokédex / Shiny / Aurora progress per region, what's still missing on the current map, and
-where to find any species.
+**Dex tab**: Pokédex / Shiny / Aurora progress per region, what's still missing in each region and on the
+current map, where to find any species, your real shiny odds and the legendary egg's current shiny chance.
 
 <p>
   <img src="docs/screenshots/6-panel-fight.png" width="300" alt="Fight tab">
@@ -73,7 +69,7 @@ Bands: **S+** ≥ 14 · **S** ≥ 9 · **A** ≥ 5 · **B** ≥ 1.5 · **C** bel
 - Each Pokémon attacks with **one type only**: its first non-Normal type (a Pidgey only hits Flying).
 - Holding a **type item of its own type** makes a Pokémon switch to that type and hit for +40%.
 - **Shiny**: 1% per Pokémon (2% with Shiny Charm, ×2 with the shiny passive, ×2 in Aurora Hunt) — about
-  3% per reset on the first catch node.
+  3% per new run on the first catch node.
 - **Aurora only exists in Battle Tower / Challenges**: 10% of shinies (20% with the Aurora Charm).
 - **Traits** (Battle Tower): 1 point per type per Pokémon (shiny 2, aurora 3); every 2 points = +1 tier.
 
@@ -81,14 +77,13 @@ Bands: **S+** ≥ 14 · **S** ≥ 9 · **A** ≥ 5 · **B** ≥ 1.5 · **C** bel
 
 - **Fully off in Ranked and Soul Link.** Ranked records your inputs as anti-cheat; the extension stays away.
 - Simulations save and restore the game's RNG seed, so they **never change a real outcome**.
-- Hunting only resets an empty run; if your run has progress, it asks first.
 - No network requests, no data collection, no accounts — everything runs in your browser.
 - Heavy work runs in small slices, so the game never freezes.
 
 ## Language
 
 The panel follows the game's language (Portuguese if the game is in Portuguese, English otherwise). You
-can change it under **Fight → Options**.
+can change it in the options menu (⚙ in the panel's header).
 
 ## Support
 
