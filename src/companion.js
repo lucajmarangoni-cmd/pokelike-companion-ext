@@ -97,7 +97,7 @@
   }
 
   // Link de doação (Ko-fi, Buy Me a Coffee...). Vazio = o botão não aparece.
-  const DONATE_URL = '';
+  const DONATE_URL = 'https://ko-fi.com/lucajbm';
 
   // ------------------------------------------------------------- settings ---
   const SETTINGS_KEY = 'pkc:settings';

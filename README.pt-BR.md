@@ -92,6 +92,11 @@ pula de lugar embaixo do mouse.
   Qualquer tecla ou clique seu no jogo pausa a caça na hora.
 - Tudo roda local. A extensão não manda nada pra lugar nenhum.
 
+## Apoie
+
+A extensão é gratuita e vai continuar sendo. Se ela te ajuda nas runs, dá pra me pagar um café no
+[Ko-fi](https://ko-fi.com/lucajbm) ☕ — totalmente opcional.
+
 ## Se parar de funcionar
 
 O Pokelike atualiza com frequência. A extensão usa funções internas do jogo

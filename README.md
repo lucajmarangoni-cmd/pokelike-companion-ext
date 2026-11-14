@@ -90,6 +90,11 @@ Bands: **S+** ≥ 14 · **S** ≥ 9 · **A** ≥ 5 · **B** ≥ 1.5 · **C** bel
 The panel follows the game's language (Portuguese if the game is in Portuguese, English otherwise). You
 can change it under **Fight → Options**.
 
+## Support
+
+The extension is free and always will be. If it helps your runs, you can buy me a coffee on
+[Ko-fi](https://ko-fi.com/lucajbm) ☕ — totally optional.
+
 ## If it breaks
 
 Pokelike updates often and the extension uses the game's internal functions. If something stops working,
