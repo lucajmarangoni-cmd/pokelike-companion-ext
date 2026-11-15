@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pokelike Companion",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Unofficial helper panel for Pokelike: boss win chances, S+ to C grades, Dex tracker and map route.",
   "icons": {
     "16": "icons/icon16.png",

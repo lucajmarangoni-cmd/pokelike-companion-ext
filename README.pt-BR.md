@@ -39,9 +39,9 @@ E dentro das telas do próprio jogo:
 
 | Tela | O que aparece |
 |---|---|
-| **Mapa** | Uma trilha pontilhada dourada com a rota sugerida até o chefe (captura vale mais com espaço no time, centro vale mais com HP baixo). |
+| **Mapa** | Uma trilha pontilhada dourada com a rota sugerida até o chefe. Conta os níveis que os treinadores dão pro time inteiro (+2 cada, selvagem +1), só valoriza captura enquanto há vaga no time e encaixa o Centro quando o HP está baixo. |
 | **Captura** | Tipo de ataque, cobertura nova, fraquezas, traits, chance contra o chefe e o selo **NOVO NA DEX / SHINY NOVO** (só quando ajuda a escolher). |
-| **Relíquia, item e boost** | Nota **S+ a C** na base do card, com em quem equipar; os motivos completos aparecem ao passar o mouse. |
+| **Relíquia, item e boost** | Nota **S+ a C** na base do card, com em quem equipar, já comparando com o item que ele segura; os motivos completos aparecem ao passar o mouse. |
 | **Time cheio** | Selo no canto de cada Pokémon: quanto a troca pelo novo muda a luta contra o chefe. |
 | **Move Tutor** | Nota em cada linha: em quem o golpe mais forte faz mais diferença. |
 | **Equipar item** | ★ no Pokémon que a nota do item sugeriu. |

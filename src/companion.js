@@ -643,12 +643,18 @@
     } else {
       // item segurado: testa em cada Pokémon e fica com o melhor portador
       const T = invType[item.id];
-      let candidates = team.map((m, i) => i);
+      // quem já segura o mesmo item não ganha nada com outro igual
+      const sameHeld = m => !!(m.heldItem && m.heldItem.id === item.id);
+      const already = team.filter(sameHeld);
+      let candidates = team.map((m, i) => i).filter(i => !sameHeld(team[i]));
+      if (already.length) why.push(L(`${teamNames(already)} já segura${already.length > 1 ? 'm' : ''} um ${itemNameOf(item)}`, `${teamNames(already)} already hold${already.length > 1 ? '' : 's'} a ${itemNameOf(item)}`));
       if (T) {
         // Mecânica do jogo: quem segura o item do próprio tipo passa a atacar com ele, com +40% de dano.
-        const users = team.filter(m => (m.types || []).includes(T));
-        candidates = team.map((m, i) => i).filter(i => (team[i].types || []).includes(T));
-        if (users.length) {
+        const allUsers = team.filter(m => (m.types || []).includes(T));
+        const users = allUsers.filter(m => !sameHeld(m));
+        candidates = candidates.filter(i => (team[i].types || []).includes(T));
+        if (!users.length && allUsers.length) { pts -= 6; why.unshift(L(`Quem usa ${tType(T)} já tem esse item: não acrescenta nada`, `Everyone who uses ${tType(T)} already has it: adds nothing`)); }
+        else if (users.length) {
           pts += 3;
           why.push(L(`+40% no dano ${tType(T)} de ${teamNames(users)}`, `+40% ${tType(T)} damage for ${teamNames(users)}`));
           const switchers = users.filter(m => moveType(m) !== T);
@@ -695,9 +701,25 @@
         holder = null;
         why.push(L('Efeito fora das lutas (ou pequeno demais pra aparecer)', 'Works outside battle (or too small to show)'));
       }
-      if (holder && holder.heldItem) why.push(L(`Troca o ${itemNameOf(holder.heldItem)} de ${holder.name}`, `Replaces ${holder.name}'s ${itemNameOf(holder.heldItem)}`));
     }
-    return { ...finish(pts, simPts, why, holder, ctx), verb: item.usable ? L('Usar em', 'Use on') : L('Equipar em', 'Give to') };
+    const res = { ...finish(pts, simPts, why, holder, ctx), verb: item.usable ? L('Usar em', 'Use on') : L('Equipar em', 'Give to') };
+    // comparação com o item que o portador já segura (a simulação já troca um pelo outro)
+    if (!item.usable && holder && holder.heldItem) {
+      const cur = itemNameOf(holder.heldItem);
+      res.replaced = cur;
+      const n = res.sim != null ? `${res.sim > 0 ? '+' : ''}${res.sim}` : null;
+      if (res.sim != null && res.sim <= -1) {
+        res.why.unshift(L(`Melhor manter o ${cur} em ${holder.name}`, `Better to keep ${cur} on ${holder.name}`));
+        res.simShort = L(`pior que o ${cur} atual`, `worse than current ${cur}`);
+      } else {
+        res.why.splice(res.simLine && res.why[0] === res.simLine ? 1 : 0, 0,
+          L(`Comparado com o ${cur} que ${holder.name} já segura`, `Compared with ${holder.name}'s current ${cur}`));
+        if (n && Math.abs(res.sim) >= 1) res.simShort = L(`${n} pts vs ${cur} atual`, `${n} pts vs current ${cur}`);
+        else res.simShort = L(`no lugar de ${cur}`, `instead of ${cur}`);
+      }
+      res.why = res.why.slice(0, 4);
+    }
+    return res;
   }
 
   async function evaluateRelic(relic, ctx) {
@@ -820,7 +842,7 @@
     // na caixa compacta o motivo vai encurtado; o texto completo fica na janelinha do mouse
     const short = w => (w && w === res.simLine ? res.simShort : String(w || ''));
     const line1 = res.holder ? `${res.verb || L('Equipar em', 'Give to')} <b>${esc(res.holder.name)}</b>` : esc(short(res.why[0]));
-    const line2 = res.holder ? esc(short(res.why[0])) : esc(short(res.why[1]));
+    const line2 = res.holder ? esc(res.replaced ? res.simShort : short(res.why[0])) : esc(short(res.why[1]));
     return `<div class="pkc-tier ${tierCls(res)}">
       <span class="pkc-tier-g">${res.tier}</span>
       <div class="pkc-tier-txt"><div class="pkc-tier-l1">${line1}</div><div class="pkc-tier-l2">${line2}</div></div>
@@ -830,7 +852,7 @@
   /** Janelinha com todos os motivos, aberta ao passar o mouse no card. */
   function tierDetails(res) {
     return `<div class="pkc-pop-head"><span class="pkc-tier-g ${tierCls(res)}">${res.tier}</span>
-      ${res.holder ? `<span>${res.verb || L('Equipar em', 'Give to')} <b>${esc(res.holder.name)}</b></span>` : ''}</div>
+      ${res.holder ? `<span>${res.verb || L('Equipar em', 'Give to')} <b>${esc(res.holder.name)}</b>${res.replaced ? ` <small>(${L('no lugar de', 'instead of')} ${esc(res.replaced)})</small>` : ''}</span>` : ''}</div>
       <ul>${res.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul>`;
   }
 
@@ -1079,25 +1101,76 @@
     rival_n: ['Rival', 'Rival'], masterball: ['Master Ball', 'Master Ball'], magma: ['Vilões', 'Villains'], aqua: ['Vilões', 'Villains'],
     reward: ['Prêmio', 'Reward'], underground: ['Subsolo', 'Underground'], distortion: ['Distorção', 'Distortion'],
   };
-  function nodeValue(n, ctx) {
-    switch (n.type) {
-      case 'catch': return ctx.room ? (ctx.size <= 2 ? 8 : 6) : 2;
-      case 'pokecenter': return 1 + ctx.missing * 14 + (ctx.fainted ? 5 : 0);
-      case 'item': return 4;
-      case 'legendary': return 9;
-      case 'masterball': return 7;
-      case 'levelup': return 5;
-      case 'moonstone': return ctx.canEvolve ? 4 : 0.5;
-      case 'move_tutor': return ctx.canTutor ? 3.5 : 0.5;
-      case 'question': return 3.5;
-      case 'trainer': case 'evilteam': case 'magma': case 'aqua': case 'silver': case 'rival_n':
-        return ctx.missing > 0.5 ? 1 : 3;
-      case 'battle': return ctx.missing > 0.5 ? 0.5 : 2;
-      case 'trade': return 2;
-      case 'mutation': return 3;
-      case 'pokemart': return 1;
-      default: return 2;
+  /*
+   * Rota sugerida. Regras do jogo que pesam aqui:
+   *  - vencer treinador dá +2 níveis pra CADA Pokémon de pé (selvagem +1; Rival/Admin +4; N +3);
+   *  - captura só ajuda enquanto há vaga no time, e o capturado vem no nível do mapa;
+   *  - o HP não volta entre lutas (só no Centro), e perder qualquer luta acaba a run.
+   * Cada caminho possível até o chefe é percorrido em ordem, somando o valor de cada parada.
+   */
+  const LEVEL_GAIN = { battle: 1, trainer: 2, evilteam: 3, magma: 3, aqua: 3, silver: 4, rival_n: 3 };
+  const HP_COST = { battle: 0.06, trainer: 0.12, evilteam: 0.2, magma: 0.2, aqua: 0.2, silver: 0.22, rival_n: 0.22, legendary: 0.12 };
+
+  function routeCtx() {
+    const s = S();
+    const maxHp = s.team.reduce((a, m) => a + (m.maxHp || 0), 0) || 1;
+    const curHp = s.team.reduce((a, m) => a + Math.max(0, m.currentHp || 0), 0);
+    const alive = s.team.filter(m => m.currentHp > 0);
+    const avgLv = (alive.length ? alive : s.team).reduce((a, m) => a + (m.level || 1), 0) / Math.max(1, (alive.length ? alive : s.team).length);
+    let bossLv = null;
+    if (ui.boss && ui.boss.team && ui.boss.team.length) bossLv = Math.max(...ui.boss.team.map(m => m.level || 1));
+    else { try { if (!s.isEndlessMode && typeof MAP_LEVEL_RANGES !== 'undefined') bossLv = MAP_LEVEL_RANGES[s.currentMap][1] + 2; } catch { /* ignore */ } }
+    return {
+      size: s.team.length, hp: curHp / maxHp, avgLv, bossLv: bossLv || avgLv,
+      fainted: s.team.some(m => m.currentHp <= 0),
+      canEvolve: s.team.some(m => { try { return window.canEverEvolve(m); } catch { return false; } }),
+      canTutor: s.team.some(m => (m.moveTier != null ? m.moveTier : 1) < 2),
+    };
+  }
+
+  /** Percorre um caminho em ordem e devolve o valor total + um resumo. */
+  function scorePath(types, ctx) {
+    let v = 0, hp = ctx.hp, size = ctx.size, lv = ctx.avgLv, gained = 0, catches = 0, extraCatches = 0, center = false, risky = 0;
+    for (const t of types) {
+      const gain = LEVEL_GAIN[t];
+      if (gain) {
+        // nível vale mais quando o time está abaixo do chefe
+        const gap = ctx.bossLv - lv;
+        const perLv = gap > 3 ? 3.5 : gap > 0 ? 2.6 : gap > -3 ? 1.2 : 0.5;
+        let val = gain * perLv;
+        // entrar numa luta com o time machucado é arriscado: perder qualquer luta acaba a run
+        const cost = HP_COST[t] || 0.1;
+        if (hp < 0.2) { val = -200 * cost; risky++; } else if (hp < 0.35) { val = -60 * cost; risky++; } else if (hp < 0.5) val -= 15 * cost;
+        hp = hp - cost + gain * 0.03; // subir de nível devolve um pouco de HP
+        v += val; lv += gain; gained += gain;
+        continue;
+      }
+      switch (t) {
+        case 'catch':
+          if (size < 6) { v += size <= 1 ? 7 : size === 2 ? 5 : size === 3 ? 3.5 : 2.2; size++; catches++; } else { v += 0.6; extraCatches++; }
+          break;
+        case 'pokecenter': {
+          const miss = 1 - Math.max(0, hp);
+          v += 0.5 + miss * 12 + (ctx.fainted && !center ? 4 : 0);
+          if (miss > 0.25) center = true;
+          hp = 1;
+          break;
+        }
+        case 'legendary': v += size < 6 ? 9 : 5; hp -= HP_COST.legendary; if (size < 6) size++; break;
+        case 'item': v += 3.5; break;
+        case 'masterball': v += 6; break;
+        case 'levelup': v += 4 * 1.5; break;
+        case 'moonstone': v += ctx.canEvolve ? 3 : 0.5; break;
+        case 'move_tutor': v += ctx.canTutor ? 3 : 0.5; break;
+        case 'question': v += 2.5; break;
+        case 'mutation': v += size < 6 ? 2.5 : 1; break;
+        case 'trade': v += 1.5; break;
+        case 'pokemart': v += 1; break;
+        case 'boss': v -= Math.max(0, 1 - hp) * 9; break; // chegar machucado no chefe custa caro
+        default: v += 1.5;
+      }
     }
+    return { v, gained, catches, extraCatches, center, risky, hpEnd: hp };
   }
 
   function planRoute() {
@@ -1105,36 +1178,37 @@
     if (!s || !s.map || !s.map.nodes || !s.team || !s.team.length) return null;
     const nodes = s.map.nodes, out = {};
     for (const e of s.map.edges || []) (out[e.from] = out[e.from] || []).push(e.to);
-    const maxHp = s.team.reduce((a, m) => a + (m.maxHp || 0), 0) || 1;
-    const curHp = s.team.reduce((a, m) => a + Math.max(0, m.currentHp || 0), 0);
-    const ctx = {
-      size: s.team.length, room: s.team.length < 6, missing: 1 - curHp / maxHp,
-      fainted: s.team.some(m => m.currentHp <= 0),
-      canEvolve: s.team.some(m => { try { return window.canEverEvolve(m); } catch { return false; } }),
-      canTutor: s.team.some(m => (m.moveTier != null ? m.moveTier : 1) < 2),
-    };
-    const memo = {};
-    const best = id => {
-      if (memo[id]) return memo[id];
-      const n = nodes[id];
-      const kids = (out[id] || []).filter(k => nodes[k]);
-      let tail = { v: 0, path: [] };
-      for (const k of kids) { const r = best(k); if (r.v > tail.v || !tail.path.length) tail = r; }
-      return (memo[id] = { v: (n && n.type !== 'boss' ? nodeValue(n, ctx) : 0) + tail.v, path: [id, ...tail.path] });
-    };
+    const ctx = routeCtx();
     const starts = window.getAccessibleNodes(s.map);
     if (!starts.length) return null;
-    let pick = null;
-    for (const n of starts) { const r = best(n.id); if (!pick || r.v > pick.v) pick = r; }
+    // todos os caminhos até o chefe (mapa pequeno: poucas centenas no máximo)
+    let pick = null, count = 0;
+    const walk = (id, path) => {
+      if (count > 20000) return;
+      const n = nodes[id];
+      if (!n) return;
+      path.push(id);
+      const kids = (out[id] || []).filter(k => nodes[k]);
+      if (!kids.length || n.type === 'boss') {
+        count++;
+        const r = scorePath(path.map(x => nodes[x].type), ctx);
+        if (!pick || r.v > pick.r.v) pick = { path: path.slice(), r };
+      } else for (const k of kids) walk(k, path);
+      path.pop();
+    };
+    for (const n of starts) walk(n.id, []);
+    if (!pick) return null;
     const types = pick.path.map(id => nodes[id].type);
     const labels = types.map(t => (NODE_LABEL[t] ? L(...NODE_LABEL[t]) : t));
-    let why = L('Soma o valor dos nós até o chefe: captura vale mais com espaço no time, centro vale mais com HP baixo.',
-      'Adds up node value to the boss: catches are worth more with room on the team, Centers more with low HP.');
-    if (types.includes('pokecenter') && ctx.missing > 0.3) why = L(`Passa no Centro: o time está com ${Math.round((1 - ctx.missing) * 100)}% do HP.`, `Stops at a Center: the team is at ${Math.round((1 - ctx.missing) * 100)}% HP.`);
-    else if (types[0] === 'catch' && ctx.room) why = L('Começa capturando: ainda tem espaço no time.', 'Starts with a catch: there is still room on the team.');
+    const r = pick.r, bits = [];
+    if (r.gained) bits.push(L(`+${r.gained} ${r.gained > 1 ? 'níveis' : 'nível'} pro time`, `+${r.gained} level${r.gained > 1 ? 's' : ''} for the team`));
+    if (r.catches) bits.push(L(`${r.catches} captura${r.catches > 1 ? 's' : ''} (vaga no time)`, `${r.catches} catch${r.catches > 1 ? 'es' : ''} (room on the team)`));
+    if (r.center) bits.push(L('passa no Centro', 'stops at a Center'));
+    let why = bits.length ? bits.join(' · ') : L('Caminho mais tranquilo até o chefe.', 'Safest path to the boss.');
+    if (ctx.bossLv > ctx.avgLv + 1) why += L(` · seu time (nv ${Math.round(ctx.avgLv)}) está abaixo do chefe (nv ${ctx.bossLv})`, ` · your team (Lv ${Math.round(ctx.avgLv)}) is below the boss (Lv ${ctx.bossLv})`);
     const from = s.currentNode && nodes[s.currentNode.id] && nodes[s.currentNode.id].visited ? s.currentNode.id
       : (Object.values(nodes).find(n => n.type === 'start') || {}).id;
-    return { path: pick.path, from, labels: labels.length > 6 ? [...labels.slice(0, 5), '…', labels[labels.length - 1]] : labels, why };
+    return { path: pick.path, from, labels: labels.length > 6 ? [...labels.slice(0, 5), '…', labels[labels.length - 1]] : labels, why, gained: r.gained };
   }
 
   function drawRoute(route) {
@@ -1181,7 +1255,7 @@
   function routeAdvisor() {
     const s = S();
     if (!cfg.routeAdvisor || busy() || blocked() || screenId() !== 'map-screen' || !s || !s.map) return;
-    const key = bossKey() + '|' + Object.values(s.map.nodes).filter(n => n.visited).length + '|' + s.team.map(m => `${m._uid}:${m.currentHp}`).join(',');
+    const key = bossKey() + '|' + (ui.boss ? ui.boss.name : '') + '|' + Object.values(s.map.nodes).filter(n => n.visited).length + '|' + s.team.map(m => `${m._uid}:${m.level}:${m.currentHp}`).join(',');
     const svg = document.querySelector('#map-screen svg');
     if (key !== routeKey) { routeKey = key; ui.route = planRoute(); if (compact() || cfg.tab === 'fight') renderBody(); }
     if (svg && !svg.querySelector('.pkc-route')) drawRoute(ui.route);
@@ -1668,7 +1742,7 @@
     if (!s || !s.team || !s.team.length) return `<p class="pkc-muted">${L('Comece uma run para ver as previsões.', 'Start a run to see predictions.')}</p>` ;
     const boss = ui.boss;
     const rr = routeRow();
-    let h = rr ? `<div class="pkc-route-ext">${rr}</div>` : '';
+    let h = rr ? `<div class="pkc-route-ext">${rr}${cfg.routeAdvisor && ui.route && ui.route.why ? `<div class="pkc-muted pkc-route-why">${esc(ui.route.why)}</div>` : ''}</div>` : '';
     if (!boss) {
       h += `<p class="pkc-muted">${L('Calculando próximo chefe…', 'Working out the next boss…')}</p>`;
     } else {

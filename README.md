@@ -33,11 +33,11 @@ Inside the game's own screens:
 | Screen | What you get |
 |---|---|
 | **Boss prep** | Win chance, **suggested team order** and, on the Elite Four, how far you usually get in the league (no healing between fights). |
-| **Items, relics, stat boosts** | An **S+ to C grade** on each card with who should hold it; hover for every reason. |
+| **Items, relics, stat boosts** | An **S+ to C grade** on each card with who should hold it, compared with the item they already hold; hover for every reason. |
 | **Catch** | Attack type, new coverage, team weaknesses it covers or stacks, win-chance change, and a **NEW IN DEX / NEW SHINY** badge. |
 | **Full team** | A corner badge on each Pokémon: how swapping it for the new one changes the boss fight. |
 | **Move Tutor** | A grade on each row: where the stronger move matters most. |
-| **Map** | A subtle dotted line with a suggested path to the boss. |
+| **Map** | A subtle dotted line with a suggested path to the boss. It counts the levels trainers give your whole team (+2 each, wild +1), only values catches while there's room on the team, and plans a Center when HP runs low. Hover the route line in the panel to see why. |
 
 ![Item grades](docs/screenshots/3-item-grades.png)
 ![Catch tips](docs/screenshots/2-catch-tips.png)

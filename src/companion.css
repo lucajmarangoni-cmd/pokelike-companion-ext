@@ -412,3 +412,4 @@
 #pkc-root .pkc-opts.on { background: #f8e070; }
 #pkc-root .pkc-optview label { display: block; margin: 6px 0; }
 #pkc-root .pkc-optview .pkc-sect { display: flex; align-items: center; justify-content: space-between; }
+#pkc-root .pkc-route-why { font-size: 11px; margin-top: 2px; }
