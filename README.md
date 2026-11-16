@@ -4,10 +4,10 @@
 
 A free browser extension (Chrome, Edge, Brave, Opera) that adds a helper panel to
 [Pokelike](https://pokelike.xyz): boss win chances simulated with the game's own engine, S+ to C grades
-for your choices, a Dex tracker and a suggested map route.
+for your choices, a Dex tracker, a suggested map route and an optional shiny auto-reroll.
 
-**Unofficial fan project**, shared with the Pokelike developer's OK. Not affiliated with Pokelike, Nintendo,
-Game Freak or The Pokémon Company.
+**Unofficial fan project**: not affiliated with or endorsed by Pokelike, Nintendo, Game Freak or The Pokémon
+Company.
 
 ![Boss prep screen with win chance and suggested order](docs/screenshots/4-boss-prep.png)
 
@@ -26,7 +26,7 @@ The panel has two modes (⤢ button in its header) and an options menu (⚙ butt
 
 - **Compact** (default): up to 3 lines that change with the screen: win chance against the next boss
   (plus the whole league on the Elite Four) and the suggested route on the map, with an ON/OFF switch.
-- **Extended**: every tool, in tabs (Fight, Team, Dex, Types).
+- **Extended**: every tool, in tabs (Hunt, Fight, Team, Dex, Types).
 
 Inside the game's own screens:
 
@@ -42,6 +42,10 @@ Inside the game's own screens:
 ![Item grades](docs/screenshots/3-item-grades.png)
 ![Catch tips](docs/screenshots/2-catch-tips.png)
 ![Map route and compact panel](docs/screenshots/1-map-route-compact.png)
+
+**Hunt tab**: optional shiny auto-reroll. It does what you'd do by hand (R + the left catch node) and stops
+by itself on a shiny, an aurora, a **shiny missing from your Dex** or a specific Pokémon. Any key press or
+click in the game pauses it. Also shows the odds per reset and your hunt history.
 
 **Dex tab**: Pokédex / Shiny / Aurora progress per region, what's still missing in each region and on the
 current map, where to find any species, your real shiny odds and the legendary egg's current shiny chance.
@@ -77,6 +81,7 @@ Bands: **S+** ≥ 14 · **S** ≥ 9 · **A** ≥ 5 · **B** ≥ 1.5 · **C** bel
 
 - **Fully off in Ranked and Soul Link.** Ranked records your inputs as anti-cheat; the extension stays away.
 - Simulations save and restore the game's RNG seed, so they **never change a real outcome**.
+- Hunting only resets an empty run; if your run has progress, it asks first.
 - No network requests, no data collection, no accounts — everything runs in your browser.
 - Heavy work runs in small slices, so the game never freezes.
 

@@ -5,7 +5,7 @@
 Extensão de navegador (Chrome, Edge, Brave, Opera) que coloca um painel de apoio
 no [Pokelike](https://pokelike.xyz), no estilo dos menus dos jogos de Pokémon.
 
-**Projeto de fã, não oficial**, compartilhado com o OK do desenvolvedor do Pokelike.
+**Projeto de fã, não oficial**: sem vínculo nem aval do Pokelike, da Nintendo, da Game Freak ou da The Pokémon Company.
 
 ![Tela de preparação do chefe com chance de vitória e ordem sugerida](docs/screenshots/4-boss-prep.png)
 
@@ -30,6 +30,7 @@ O painel tem dois modos (botão ⤢ no cabeçalho) e um menu de opções (botão
 
 | Aba | O que faz |
 |---|---|
+| **Caça** | Reset automático (opcional) até sair um shiny, uma aurora, **um shiny que falta na sua Dex** ou um Pokémon específico. Faz o mesmo que você faria na mão (R + nó de captura da esquerda) e para sozinho quando acha. Mostra a chance por reset e o histórico das caças. |
 | **Luta** | Próximo chefe (inclusive cada membro da **Elite Four**), chance de vitória simulada pelo motor do jogo, melhor ordem do time e duelo de tipos. |
 | **Time** | HP, golpe de cada um, fraquezas compartilhadas, buracos de cobertura e traits. |
 | **Dex** | Progresso da Pokédex, Shiny Dex e Aurora Dex por região, **quais Pokémon ainda faltam** na região e no mapa atual, busca com onde cada um aparece, sua chance real de shiny e a chance atual do **ovo lendário**. |
@@ -89,6 +90,8 @@ pula de lugar embaixo do mouse.
   como anti-cheat, e a extensão não mexe em nada lá.
 - As simulações salvam e restauram a seed do jogo, igual às simulações internas do
   próprio Pokelike. Elas **não mudam o resultado** das suas lutas.
+- A caça só reseta uma run vazia. Se a run já tiver progresso, ela pergunta antes.
+  Qualquer tecla ou clique seu no jogo pausa a caça na hora.
 - Tudo roda local. A extensão não manda nada pra lugar nenhum.
 
 ## Apoie
